@@ -100,6 +100,7 @@ sudo journalctl -u main-api-local.service -n 150 --no-pager | grep -E 'APPLICATI
 | `src/` | Spring Boot / MyBatis 소스와 설정 |
 | `scripts/activate.sh` | 환경별 실행 명령을 현재 셸에 등록 |
 | `scripts/systemd-manager.sh` | systemd 서비스 설치, 실행, 중지, 상태 및 로그 관리 |
+| `scripts/setup-deploy-checkouts.sh` | 환경별 독립 배포 체크아웃 생성 및 `.env` 초기 복사 |
 | `scripts/service-start.sh`, `scripts/service-exit.sh` | 서비스 시작/종료 후처리 |
 | `scripts/abnormal-exit-email.py` | 비정상 종료 후 이메일 전송 시도 |
 | `.env.local`, `.env.dev`, `.env.stage`, `.env.prod` | 환경별 설정 파일 |
