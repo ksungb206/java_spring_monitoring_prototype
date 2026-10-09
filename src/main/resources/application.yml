@@ -1,0 +1,46 @@
+server:
+  port: ${PORT:7001}
+spring:
+  application:
+    name: main-api-spring
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+          auth: true
+          starttls:
+            enable: true
+mybatis:
+  mapper-locations: classpath*:mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+
+# MSA server monitoring. The interval is configurable; 600000 ms = 10 minutes.
+monitoring:
+  enabled: ${MONITORING_ENABLED:true}
+  interval-ms: ${MONITORING_INTERVAL_MS:600000}
+  initial-delay-ms: ${MONITORING_INITIAL_DELAY_MS:1000}
+  connect-timeout-ms: ${MONITORING_CONNECT_TIMEOUT_MS:3000}
+  email:
+    enabled: ${MONITORING_EMAIL_ENABLED:false}
+    recipients: ${MONITOR_EMAIL_TO:}
+  targets:
+    - name: oauth
+      host: ${MONITOR_OAUTH_HOST:127.0.0.1}
+      port: ${MONITOR_OAUTH_PORT:7102}
+    - name: log
+      host: ${MONITOR_LOG_HOST:127.0.0.1}
+      port: ${MONITOR_LOG_PORT:7103}
+    - name: socket
+      host: ${MONITOR_SOCKET_HOST:127.0.0.1}
+      port: ${MONITOR_SOCKET_PORT:7104}
+
