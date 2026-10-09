@@ -1,0 +1,31 @@
+name: Deploy monitoring server
+on:
+  push:
+    branches: [dev, stage, prod]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# All environments currently share one WSL Ubuntu host.
+# Serialize deployments to avoid concurrent Maven/systemd operations.
+concurrency:
+  group: monitoring-deploy-local
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, deploy-local]
+    environment: ${{ github.ref_name }}
+    timeout-minutes: 20
+    steps:
+      - name: Deploy selected environment on WSL
+        env:
+          DEPLOY_BRANCH: ${{ github.ref_name }}
+          DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT }}
+        run: |
+          set -euo pipefail
+          case "$DEPLOY_BRANCH" in dev|stage|prod) ;; *) exit 2 ;; esac
+          : "${DEPLOY_ROOT:?Configure DEPLOY_ROOT separately for dev, stage, prod GitHub Environments}"
+          [[ -d "$DEPLOY_ROOT/.git" ]] || { echo "Missing Git checkout: $DEPLOY_ROOT"; exit 1; }
+          bash "$DEPLOY_ROOT/scripts/deploy-branch.sh" "$DEPLOY_BRANCH"
