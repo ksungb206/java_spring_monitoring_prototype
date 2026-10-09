@@ -8,5 +8,3 @@ spring:
   sql:
     init:
       mode: embedded
-app:
-  jwt-secret: ${LOCAL_JWT_SECRET:LOCAL_ONLY_DEVELOPMENT_SECRET_CHANGE_ME_1234567890}
