@@ -9,8 +9,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import kr.co.mainapi.controller.ApiController;
 import kr.co.mainapi.security.SecurityConfig;
 import org.springframework.context.annotation.Import;
-import kr.co.mainapi.security.SecurityConfig;
-import org.springframework.context.annotation.Import;
 import kr.co.mainapi.service.OpConfigService;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
