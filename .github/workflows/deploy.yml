@@ -7,7 +7,7 @@ on:
 permissions:
   contents: read
 
-# All environments currently share one WSL Ubuntu host.
+# One WSL host, but an independent Git checkout and systemd unit per environment.
 # Serialize deployments to avoid concurrent Maven/systemd operations.
 concurrency:
   group: monitoring-deploy-local
@@ -19,13 +19,16 @@ jobs:
     environment: ${{ github.ref_name }}
     timeout-minutes: 20
     steps:
-      - name: Deploy selected environment on WSL
+      - name: Validate isolated deployment checkout
         env:
           DEPLOY_BRANCH: ${{ github.ref_name }}
           DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT }}
         run: |
           set -euo pipefail
-          case "$DEPLOY_BRANCH" in dev|stage|prod) ;; *) exit 2 ;; esac
+          case "$DEPLOY_BRANCH" in dev|stage|prod) ;; *) echo "Unsupported deployment branch: $DEPLOY_BRANCH"; exit 2 ;; esac
           : "${DEPLOY_ROOT:?Configure DEPLOY_ROOT separately for dev, stage, prod GitHub Environments}"
-          [[ -d "$DEPLOY_ROOT/.git" ]] || { echo "Missing Git checkout: $DEPLOY_ROOT"; exit 1; }
+          [[ -d "$DEPLOY_ROOT/.git" ]] || { echo "Missing isolated Git checkout: $DEPLOY_ROOT. Run scripts/setup-deploy-checkouts.sh from the source workspace first."; exit 1; }
+          [[ -f "$DEPLOY_ROOT/scripts/deploy-branch.sh" ]] || { echo "Missing deploy script in checkout: $DEPLOY_ROOT"; exit 1; }
+          CHECKOUT_BRANCH="$(git -C "$DEPLOY_ROOT" branch --show-current)"
+          [[ "$CHECKOUT_BRANCH" == "$DEPLOY_BRANCH" ]] || { echo "Expected isolated checkout branch $DEPLOY_BRANCH, found $CHECKOUT_BRANCH at $DEPLOY_ROOT"; exit 1; }
           bash "$DEPLOY_ROOT/scripts/deploy-branch.sh" "$DEPLOY_BRANCH"
