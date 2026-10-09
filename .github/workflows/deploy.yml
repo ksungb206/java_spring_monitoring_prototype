@@ -1,0 +1,29 @@
+name: Deploy monitoring server
+on:
+  push:
+    branches: [dev, stage, prod]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # Runner labels must be provisioned separately on the corresponding servers.
+    runs-on: [self-hosted, linux, "deploy-${{ github.ref_name }}"]
+    environment: ${{ github.ref_name }}
+    timeout-minutes: 20
+    steps:
+      - name: Deploy checked branch
+        env:
+          DEPLOY_BRANCH: ${{ github.ref_name }}
+          DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT }}
+        run: |
+          set -euo pipefail
+          case "$DEPLOY_BRANCH" in dev|stage|prod) ;; *) exit 2 ;; esac
+          : "${DEPLOY_ROOT:?Set DEPLOY_ROOT in GitHub Environment variables}"
+          bash "$DEPLOY_ROOT/scripts/deploy-branch.sh" "$DEPLOY_BRANCH"
