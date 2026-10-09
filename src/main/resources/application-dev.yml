@@ -9,5 +9,3 @@ spring:
   sql:
     init:
       mode: never
-app:
-  jwt-secret: ${DEV_JWT_SECRET}
