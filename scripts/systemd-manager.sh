@@ -102,7 +102,6 @@ case "$ACTION" in
     bash "$ROOT/scripts/service-event.sh" "$PROFILE" MANUAL_STOP "requested_by=$(id -un)"
     sudo systemctl stop "$UNIT"
     sudo systemctl stop "$WATCHDOG_UNIT" 2>/dev/null || true
-    build_jar
     ;;
   restart)
     if [[ ! -f "$UNIT_PATH" ]] || ! grep -Fq "WorkingDirectory=$ROOT" "$UNIT_PATH" || [[ ! -f "$JAR" ]]; then install_unit; else build_jar; fi
