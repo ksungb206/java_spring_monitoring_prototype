@@ -24,7 +24,7 @@ class HealthTest {
         mvc.perform(get("/api/v1/health"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.code").value(200))
-            .andExpect(jsonPath("$.data.status").value("ok"));
+            .andExpect(jsonPath("$.data.status").value("result_ok"));
     }
 
     @Test void opConfigIsForbidden() throws Exception {
