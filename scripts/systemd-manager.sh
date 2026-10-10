@@ -19,12 +19,15 @@ for dir in /usr/lib/jvm/java-17-openjdk-* /usr/lib/jvm/temurin-17-*; do
 done
 [[ -n "$JAVA" ]] || { echo 'ERROR: Java 17 missing. Install openjdk-17-jdk.' >&2; exit 1; }
 JAR="$ROOT/target/main-api-spring-0.1.0.jar"
-install_unit() {
+build_jar() {
   [[ -f "$ENV_FILE" ]] || { echo "ERROR: $ENV_FILE not found. Edit or create .env.${PROFILE} with your settings." >&2; exit 1; }
   command -v mvn >/dev/null || { echo 'ERROR: Maven missing' >&2; exit 1; }
   echo "Building $PROFILE (tests included)..."
   (cd "$ROOT" && JAVA_HOME="$(dirname "$(dirname "$JAVA")")" PATH="$(dirname "$JAVA"):$PATH" mvn clean package)
   [[ -f "$JAR" ]] || { echo "ERROR: Built JAR missing: $JAR" >&2; exit 1; }
+}
+install_unit() {
+  build_jar
   local tmp; tmp="$(mktemp)"
   cat > "$tmp" <<EOF
 [Unit]
@@ -87,7 +90,7 @@ EOF
 case "$ACTION" in
   install) install_unit;;
   start)
-    if [[ ! -f "$UNIT_PATH" ]] || ! grep -Fq "WorkingDirectory=$ROOT" "$UNIT_PATH" || [[ ! -f "$JAR" ]]; then install_unit; fi
+    if [[ ! -f "$UNIT_PATH" ]] || ! grep -Fq "WorkingDirectory=$ROOT" "$UNIT_PATH" || [[ ! -f "$JAR" ]]; then install_unit; else build_jar; fi
     bash "$ROOT/scripts/service-event.sh" "$PROFILE" MANUAL_START "requested_by=$(id -un)"
     sudo systemctl start "$UNIT"
     sudo systemctl --no-pager status "$UNIT" || true
@@ -99,9 +102,10 @@ case "$ACTION" in
     bash "$ROOT/scripts/service-event.sh" "$PROFILE" MANUAL_STOP "requested_by=$(id -un)"
     sudo systemctl stop "$UNIT"
     sudo systemctl stop "$WATCHDOG_UNIT" 2>/dev/null || true
+    build_jar
     ;;
   restart)
-    if [[ ! -f "$UNIT_PATH" ]] || ! grep -Fq "WorkingDirectory=$ROOT" "$UNIT_PATH" || [[ ! -f "$JAR" ]]; then install_unit; fi
+    if [[ ! -f "$UNIT_PATH" ]] || ! grep -Fq "WorkingDirectory=$ROOT" "$UNIT_PATH" || [[ ! -f "$JAR" ]]; then install_unit; else build_jar; fi
     mkdir -p "$ROOT/run/$PROFILE"
     printf 'MANUAL_RESTART\n' > "$ROOT/run/$PROFILE/shutdown-reason"
     bash "$ROOT/scripts/service-event.sh" "$PROFILE" MANUAL_RESTART "requested_by=$(id -un)"
