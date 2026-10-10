@@ -26,6 +26,45 @@ build_jar() {
   (cd "$ROOT" && JAVA_HOME="$(dirname "$(dirname "$JAVA")")" PATH="$(dirname "$JAVA"):$PATH" mvn clean package)
   [[ -f "$JAR" ]] || { echo "ERROR: Built JAR missing: $JAR" >&2; exit 1; }
 }
+# Resolve the same PORT value that systemd loads from EnvironmentFile.
+# Do not source .env files: they are environment files, not shell scripts.
+health_port() {
+  local value
+  value="$(sed -nE 's/^[[:space:]]*PORT[[:space:]]*=[[:space:]]*(.*)$/\\1/p' "$ENV_FILE" | tail -n 1)"
+  value="${value%%#*}"
+  value="${value//[[:space:]]/}"
+  value="${value#\\\"}"; value="${value%\\\"}"
+  value="${value#\\'}"; value="${value%\\'}"
+  value="${value:-7001}"
+  if [[ ! "$value" =~ ^[0-9]+$ ]] || (( 10#$value < 1 || 10#$value > 65535 )); then
+    echo "ERROR: Invalid PORT in $ENV_FILE: $value" >&2
+    return 1
+  fi
+  printf '%s' "$value"
+}
+wait_for_health() {
+  command -v curl >/dev/null || { echo 'ERROR: curl missing; cannot check readiness.' >&2; return 1; }
+  local port url attempt http_code
+  port="$(health_port)" || return 1
+  url="http://127.0.0.1:${port}/api/v1/health"
+  echo "Waiting up to 30 seconds for $PROFILE health: $url"
+  for ((attempt=1; attempt<=30; attempt++)); do
+    if ! sudo systemctl is-active --quiet "$UNIT"; then
+      echo "ERROR: $UNIT stopped before readiness." >&2
+      sudo journalctl -u "$UNIT" -n 40 --no-pager >&2 || true
+      return 1
+    fi
+    http_code="$(curl --noproxy '*' --silent --output /dev/null --write-out '%{http_code}' --max-time 2 "$url" || true)"
+    if [[ "$http_code" == 200 ]]; then
+      echo "[OK] $PROFILE server ready (HTTP 200): $url"
+      return 0
+    fi
+    sleep 1
+  done
+  echo "ERROR: $PROFILE health did not return HTTP 200 within the readiness window: $url (last HTTP: $http_code)" >&2
+  sudo journalctl -u "$UNIT" -n 40 --no-pager >&2 || true
+  return 1
+}
 install_unit() {
   build_jar
   local tmp; tmp="$(mktemp)"
@@ -93,8 +132,9 @@ case "$ACTION" in
     if [[ ! -f "$UNIT_PATH" ]] || ! grep -Fq "WorkingDirectory=$ROOT" "$UNIT_PATH" || [[ ! -f "$JAR" ]]; then install_unit; else build_jar; fi
     bash "$ROOT/scripts/service-event.sh" "$PROFILE" MANUAL_START "requested_by=$(id -un)"
     sudo systemctl start "$UNIT"
-    sudo systemctl --no-pager status "$UNIT" || true
     sudo systemctl stop "$WATCHDOG_UNIT" 2>/dev/null || true
+    wait_for_health
+    sudo systemctl --no-pager status "$UNIT" || true
     ;;
   stop)
     mkdir -p "$ROOT/run/$PROFILE"
@@ -110,6 +150,7 @@ case "$ACTION" in
     bash "$ROOT/scripts/service-event.sh" "$PROFILE" MANUAL_RESTART "requested_by=$(id -un)"
     sudo systemctl restart "$UNIT"
     sudo systemctl stop "$WATCHDOG_UNIT" 2>/dev/null || true
+    wait_for_health
     sudo systemctl --no-pager status "$UNIT" || true
     ;;
   status) sudo systemctl --no-pager status "$UNIT";;
