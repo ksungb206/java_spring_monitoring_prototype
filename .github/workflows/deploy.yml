@@ -1,31 +1,29 @@
 name: Deploy monitoring server
 on:
   push:
-    branches: [dev, stage, prod]
+    branches: [dev]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: monitoring-deploy-${{ github.ref_name }}
+  group: monitoring-deploy-dev
   cancel-in-progress: false
 
 jobs:
   deploy:
-    if: contains(fromJSON('["dev","stage","prod"]'), github.ref_name)
-    runs-on: [self-hosted, linux, "deploy-${{ github.ref_name }}"]
-    environment: ${{ github.ref_name }}
+    if: github.ref == 'refs/heads/dev'
+    runs-on: [self-hosted, linux, deploy-dev]
+    environment: dev
     timeout-minutes: 20
     steps:
-      - name: Deploy environment checkout
+      - name: Deploy DEV to the runner's own WSL
         env:
-          DEPLOY_BRANCH: ${{ github.ref_name }}
           DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT }}
         run: |
           set -euo pipefail
-          case "$DEPLOY_BRANCH" in dev|stage|prod) ;; *) exit 2;; esac
-          if [[ -z "$DEPLOY_ROOT" ]]; then DEPLOY_ROOT="$HOME/deploy-checkouts/$DEPLOY_BRANCH"; fi
-          [[ -d "$DEPLOY_ROOT/.git" ]] || { echo "Missing checkout: $DEPLOY_ROOT"; exit 1; }
-          [[ "$(git -C "$DEPLOY_ROOT" branch --show-current)" == "$DEPLOY_BRANCH" ]] || exit 1
-          bash "$DEPLOY_ROOT/scripts/deploy-branch.sh" "$DEPLOY_BRANCH"
+          if [[ -z "$DEPLOY_ROOT" ]]; then DEPLOY_ROOT="$HOME/deploy-checkouts/dev"; fi
+          [[ -d "$DEPLOY_ROOT/.git" ]] || { echo "Missing local DEV checkout: $DEPLOY_ROOT. Run scripts/bootstrap-wsl-dev.sh first."; exit 1; }
+          [[ "$(git -C "$DEPLOY_ROOT" branch --show-current)" == "dev" ]] || exit 1
+          bash "$DEPLOY_ROOT/scripts/deploy-branch.sh" dev
