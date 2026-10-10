@@ -31,10 +31,7 @@ build_jar() {
 health_port() {
   local value
   value="$(sed -nE 's/^[[:space:]]*PORT[[:space:]]*=[[:space:]]*(.*)$/\\1/p' "$ENV_FILE" | tail -n 1)"
-  value="${value%%#*}"
   value="${value//[[:space:]]/}"
-  value="${value#\\\"}"; value="${value%\\\"}"
-  value="${value#\\'}"; value="${value%\\'}"
   value="${value:-7001}"
   if [[ ! "$value" =~ ^[0-9]+$ ]] || (( 10#$value < 1 || 10#$value > 65535 )); then
     echo "ERROR: Invalid PORT in $ENV_FILE: $value" >&2
