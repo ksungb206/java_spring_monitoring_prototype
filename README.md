@@ -100,6 +100,7 @@ sudo journalctl -u main-api-local.service -n 150 --no-pager | grep -E 'APPLICATI
 | `src/` | Spring Boot / MyBatis 소스와 설정 |
 | `scripts/activate.sh` | 환경별 실행 명령을 현재 셸에 등록 |
 | `scripts/systemd-manager.sh` | systemd 서비스 설치, 실행, 중지, 상태 및 로그 관리 |
+| `scripts/setup-deploy-checkouts.sh` | 환경별 독립 배포 체크아웃 생성 및 `.env` 초기 복사 |
 | `scripts/service-start.sh`, `scripts/service-exit.sh` | 서비스 시작/종료 후처리 |
 | `scripts/abnormal-exit-email.py` | 비정상 종료 후 이메일 전송 시도 |
 | `.env.local`, `.env.dev`, `.env.stage`, `.env.prod` | 환경별 설정 파일 |
@@ -111,47 +112,101 @@ sudo journalctl -u main-api-local.service -n 150 --no-pager | grep -E 'APPLICATI
 - 이 ZIP은 모니터링 서버 프로젝트이며, 실제 OAuth/Log/Socket MSA 서버의 구현은 포함하지 않습니다.
 - 환경별 메일 발송과 비정상 종료 처리는 배포할 서버에서 직접 검증해야 합니다.
 
-## 8. 브랜치 기반 CI/CD 자동 배포
+## 8. DEV 자동 배포 (GitHub Actions + 로컬 WSL)
 
-GitHub Actions 워크플로 `.github/workflows/deploy.yml`은 원격 `dev`, `stage`, `prod` 브랜치에 **Push가 발생하면** 해당 환경의 배포 작업을 시작합니다. 피처 브랜치에서 작업하거나 로컬에서 Merge하는 것만으로는 원격 배포가 시작되지 않습니다. 대상 환경 브랜치에 병합한 뒤 그 결과를 원격 브랜치에 Push해야 합니다.
+**현재 구현 및 검증 범위는 DEV 단일 WSL 프로토타입입니다.** `dev` 브랜치 Push를 감지해 GitHub Actions가 온라인 상태인 self-hosted Runner에 배포 작업을 할당합니다. Runner가 설치된 **그 WSL 내부**에서 Maven 빌드, Spring Boot systemd 재시작, 헬스체크를 수행합니다. `stage`, `prod`, EC2 자동 배포는 아직 이 워크플로의 대상이 아닙니다.
 
-권장 흐름:
+### 코드만 Clone하면 자동 배포되나요?
 
-1. 개발자가 저장소를 clone하고 `feat/개발자명/기능명` 같은 피처 브랜치에서 작업합니다.
-2. 변경 사항을 Push하고 Pull Request를 통해 대상 브랜치로 병합합니다.
-3. 병합 결과를 원격 `dev`, `stage` 또는 `prod` 브랜치에 Push합니다.
-4. GitHub Actions가 해당 환경의 배포 작업을 실행합니다.
-5. Runner에서 Maven 빌드·테스트 후 systemd 서비스를 재시작하고 헬스체크를 수행합니다.
+**아니요.** 저장소의 `.github/workflows/deploy.yml`과 배포 스크립트는 배포 절차를 정의하지만, 실제 배포 대상 WSL에는 **최초 1회 서버 설정**이 필요합니다. GitHub-hosted Runner만으로 빌드/테스트하는 경우와 달리, 이 프로젝트는 개발자의 로컬 WSL에서 서비스를 실행하기 때문입니다.
 
-### GitHub Environment 변수: DEPLOY_ROOT
-
-워크플로는 GitHub Environment 이름을 브랜치명(`dev`, `stage`, `prod`)으로 사용하고, 해당 Environment의 **Variables**에서 `DEPLOY_ROOT`를 읽습니다. 각 Environment에서 다음 변수를 별도로 등록해야 합니다.
-
-| Environment | 변수 이름 | 값 |
+| 구분 | 저장소(코드) | 개발자 WSL(서버) |
 | --- | --- | --- |
-| `dev` | `DEPLOY_ROOT` | DEV 배포 체크아웃이 있는 Runner 로컬 절대 경로 |
-| `stage` | `DEPLOY_ROOT` | STAGE 배포 체크아웃이 있는 Runner 로컬 절대 경로 |
-| `prod` | `DEPLOY_ROOT` | PROD 배포 체크아웃이 있는 Runner 로컬 절대 경로 |
+| 배포 트리거 | `.github/workflows/deploy.yml`: 원격 `dev` Push | Runner가 온라인이어야 작업 수신 |
+| 실행 도구 | `scripts/deploy-branch.sh` 등 | Java 17, Maven, Git, curl, Python 3 |
+| 배포 대상 | 코드와 설정 절차만 포함 | `~/deploy-checkouts/dev`의 별도 `dev` 체크아웃 |
+| 실행 서비스 | systemd 설치 스크립트 포함 | `main-api-dev.service`, 기본 포트 7002 |
+| 인증/환경 | 비밀번호·토큰 커밋 금지 | 로컬 `.env.dev`, Git 인증, Runner 등록 토큰(최초 등록 시) |
+| 자동 실행 | GitHub Actions가 Job 생성 | Runner systemd 서비스가 Job 수신·실행 |
 
-GitHub 저장소의 **Settings → Environments → 해당 환경 → Environment variables → Add environment variable**에서 `DEPLOY_ROOT`를 추가합니다. 변수명은 대소문자를 포함해 정확히 `DEPLOY_ROOT`여야 합니다. 워크플로는 `${{ vars.DEPLOY_ROOT }}`를 사용하므로 이를 Actions Secret에만 등록하면 읽히지 않습니다.
+### 최초 1회: 각 개발자의 WSL 설정
 
-**경로는 개발자 PC의 경로가 아니라 self-hosted Runner가 실행되는 컴퓨터에서 실제로 접근할 수 있는 배포 체크아웃 경로여야 합니다.** 예를 들어 현재 WSL 테스트 환경의 경로가 `/mnt/d/main_api_spring_mybatis_COMPLETE/main_api_spring_mybatis`라면 그 경로는 현재 컴퓨터의 WSL에서만 유효합니다. 다른 컴퓨터에서 실행되는 Runner에는 그 컴퓨터의 실제 경로를 설정해야 합니다. `DEPLOY_ROOT` 아래에는 `.git` 디렉터리와 `scripts/deploy-branch.sh`가 있어야 합니다.
+1. Windows에서 **WSL2 Ubuntu**를 설치하고 WSL 안에서 systemd를 활성화합니다. `/etc/wsl.conf`에 아래 내용을 설정한 뒤 **Windows PowerShell에서** `wsl --shutdown`을 실행하고 Ubuntu를 다시 엽니다.
 
-### Self-hosted Runner 요구사항
+   ```ini
+   [boot]
+   systemd=true
+   ```
 
-- GitHub 저장소의 Settings → Actions → Runners에서 연결된 Linux Runner가 있어야 합니다.
-- Runner에는 `self-hosted`, `linux`, `deploy-local` 라벨이 필요합니다. 워크플로는 이 라벨 조합을 가진 Runner를 선택합니다.
-- Runner 계정은 저장소 체크아웃 경로, JDK 17, Maven, Git, curl 및 systemd에 접근할 수 있어야 합니다.
-- 배포 스크립트는 `main-api-dev.service`, `main-api-stage.service`, `main-api-prod.service`를 대상으로 하며, 해당 systemd 유닛과 비밀번호 입력 없이 실행 가능한 최소 권한의 `sudo` 설정이 사전에 필요합니다.
-- 각 배포 체크아웃에는 해당 환경의 `.env.dev`, `.env.stage` 또는 `.env.prod`가 안전하게 준비되어 있어야 합니다. `.env.*` 파일이나 비밀값을 Git에 커밋하지 마세요.
+2. WSL에서 Java 17, Maven 등 필요한 프로그램을 준비하고, GitHub 저장소를 Clone합니다. **비공개 저장소 Clone 권한**이 필요합니다.
 
-### 배포가 실패할 때
+   ```bash
+   sudo apt update
+   sudo apt install -y openjdk-17-jdk maven git curl tar python3 sudo
+   # visudo가 없는 경우 sudo 패키지 설치 상태 확인
+   cd /path/to/your/clone
+   ```
 
-- `Configure DEPLOY_ROOT separately for dev, stage, prod GitHub Environments`: 해당 Environment의 Variables에 `DEPLOY_ROOT`가 없거나 이름이 틀렸습니다.
-- `Missing Git checkout`: `DEPLOY_ROOT` 경로가 Runner 컴퓨터에 없거나 그 아래에 `.git`이 없습니다.
-- `Missing .env.dev` 등: 해당 환경의 비밀 설정 파일이 배포 체크아웃에 없습니다.
-- `Expected checked-out branch dev` 등: 배포 체크아웃이 대상 환경 브랜치를 가리키지 않습니다.
-- 헬스체크 실패: 애플리케이션 시작 로그, 환경변수, 포트 및 systemd 서비스 상태를 확인하세요.
+3. 저장소 루트에 **본인의 `.env.dev`**를 준비합니다. 비밀번호를 Git에 올리지 마세요. GitHub 저장소의 **Settings → Actions → Runners → New self-hosted runner**에서 유효기간이 짧은 등록 토큰을 발급합니다(등록 권한 필요).
 
-첫 검증은 `dev` 환경에서 수행하고 성공한 뒤 `stage`, `prod`로 진행하세요. 운영 브랜치에는 GitHub Branch protection/ruleset과 Pull Request 승인 규칙을 설정해 직접 Push 권한을 제한하는 것을 권장합니다.
+4. WSL 저장소 루트에서 아래 명령을 실행합니다. **토큰을 셸 기록·공유 로그에 노출하지 않도록 주의**하세요.
 
+   ```bash
+   # 토큰 입력 시 터미널에 표시하지 않음
+   read -rsp 'Runner registration token: ' GITHUB_RUNNER_TOKEN; echo
+   export GITHUB_RUNNER_TOKEN
+   bash scripts/bootstrap-wsl-dev.sh
+   unset GITHUB_RUNNER_TOKEN
+   ```
+
+   이 스크립트는 `~/deploy-checkouts/dev` 준비, `main-api-dev.service` 설치, 제한된 systemctl 권한 설정, `~/actions-runner-dev` Runner 등록 및 systemd 서비스 활성화를 수행합니다. 앱 서비스는 설치만 하고, 배포 시 시작/재시작합니다. **Runner 설치와 GitHub 저장소 등록에는 네트워크·권한·토큰이 필요하므로 완전한 무설정 설치는 아닙니다.**
+
+5. 이미 `~/actions-runner`에 Runner를 설치해 사용 중이라면 새 Runner가 중복 등록될 수 있습니다. 기존 Runner를 재사용할지, 새 `~/actions-runner-dev`를 설치할지 결정한 뒤 진행하세요. **기존 Runner 폴더를 삭제하거나 덮어쓰지 마세요.** 기존 Runner를 쓰는 경우 GitHub Runner 라벨에 `deploy-dev`가 필요하며, systemd 실행과 배포 서비스 권한을 별도로 확인해야 합니다.
+
+자세한 절차와 제약: [WSL DEV 무인 배포 가이드](docs/wsl-dev-unattended.md).
+
+### 설치 상태 확인
+
+```bash
+# DEV 독립 체크아웃과 브랜치
+git -C "$HOME/deploy-checkouts/dev" branch --show-current
+test -f "$HOME/deploy-checkouts/dev/.env.dev" && echo '[OK] .env.dev'
+
+# 앱 서비스의 설치·실행 상태 (최초 배포 전에는 inactive일 수 있음)
+systemctl is-enabled main-api-dev.service
+systemctl is-active main-api-dev.service
+systemctl show main-api-dev.service -p WorkingDirectory --value
+
+# 새 bootstrap으로 등록한 Runner인 경우
+cat "$HOME/actions-runner-dev/.service"
+systemctl is-active "$(cat "$HOME/actions-runner-dev/.service")"
+```
+
+Runner는 GitHub **Settings → Actions → Runners**에서 온라인 상태 및 `deploy-dev` 라벨을 확인합니다. 기존 Runner를 재사용한다면 그 Runner의 서비스 이름을 사용하세요. `main-api-dev.service`가 `disabled`여도 현재 `active`이면 실행 중일 수 있습니다. 단, WSL 부팅 시 앱 자체 자동 시작까지 원한다면 별도로 enable 설정을 검토해야 합니다.
+
+### 실제 배포 흐름과 성공 확인
+
+1. 개발자는 기능 브랜치(예: `feat/ksb/local`)에서 작업합니다. 로컬 Merge만으로 배포되지 않습니다.
+2. 변경 사항을 원격 `dev`에 병합하고 Push합니다.
+3. GitHub Actions가 `self-hosted`, `linux`, `deploy-dev` 라벨을 가진 **온라인 Runner 한 대**에 작업을 할당합니다.
+4. Runner가 자신의 `~/deploy-checkouts/dev`에서 `dev` 브랜치를 업데이트하고 Maven 빌드/테스트, `main-api-dev.service` 재시작, 헬스체크를 수행합니다. 실패 시 배포 스크립트가 복구를 시도하지만 모든 장애 복구가 보장되는 것은 아닙니다.
+5. **GitHub Actions Job이 Success인지 확인한 다음**, 실제 실행 WSL에서 응답을 확인합니다.
+
+   ```bash
+   curl -fsS http://localhost:7002/api/v1/health
+   ```
+
+2026-10-10 단일 WSL 검증에서 `dev` 커밋 `36af100` 배포 Job은 Success였고, 응답의 `data.status`가 `result_ok`에서 `result_ok_deploy_v2`로 변경됐습니다. 이는 **해당 WSL의 DEV 배포 검증 결과**이지 모든 개발자 PC의 자동 배포를 뜻하지 않습니다.
+
+### 운영상 제약과 문제 해결
+
+- **WSL/Windows가 종료되어 있으면 GitHub가 Runner를 깨울 수 없습니다.** Runner systemd 자동 시작은 WSL이 실행된 이후에만 동작합니다. Windows 로그인/부팅 후 WSL 실행 자동화는 별도 설정·검증이 필요합니다.
+- **다수 개발자에게 동시 배포되지 않습니다.** 동일한 `deploy-dev` 라벨의 Runner가 여러 대여도 한 Job은 그중 **한 대**에서만 실행됩니다. 각자의 WSL에 모두 배포하려면 고유 Runner 식별 및 Job 분기(fan-out) 또는 별도 pull 방식이 필요합니다.
+- `Missing local DEV checkout`: `~/deploy-checkouts/dev`와 Git 체크아웃 상태를 확인하고 초기 설정을 진행하세요.
+- `Missing .env.dev`: 배포 체크아웃에 환경 파일이 있는지 확인하세요. 실제 값은 출력하거나 커밋하지 마세요.
+- `WorkingDirectory mismatch`: `main-api-dev.service`의 작업 경로가 DEV 독립 체크아웃을 가리키도록 유닛을 재설치하세요.
+- Job이 `queued`에 머무르면 Runner 온라인 상태, `deploy-dev` 라벨, systemd 서비스 상태를 확인하세요.
+- Job 실패 또는 헬스체크 실패 시 `sudo journalctl -u main-api-dev.service -n 150 --no-pager`로 서버 로그를 확인하세요. 로그 공유 시 비밀값을 제거하세요.
+- Runner가 실행하는 저장소 코드는 **해당 WSL 사용자 권한으로 실행**됩니다. 신뢰할 수 있는 코드·기여자에게만 배포 권한을 부여하고 Runner 등록 토큰과 비밀값을 보호하세요.
+
+STAGE/PROD/EC2 확장과 관리자 페이지는 이 DEV 프로토타입의 후속 작업입니다.
