@@ -1,12 +1,106 @@
-# MSA 모니터링 서버
+# MSA 장애 모니터링 및 서비스 복구 자동화 프로젝트
 
-Java 17 · Spring Boot 3.3.5 · MyBatis · Maven · Ubuntu / WSL(systemd)
+**Node.js NestJS 기반 프로젝트를 Java 17 / Spring Boot 3.3.5로 전환한 모니터링 및 장애 대응 프로토타입**
 
-MSA 서비스의 TCP 연결 상태를 확인하고 장애를 Gmail로 알립니다. 모니터링 서버가 정상 종료되면 종료 알림을 전송하고, 비정상 종료는 systemd의 종료 후처리 스크립트가 별도로 이메일 전송을 시도합니다.
+Java 17 · Spring Boot 3.3.5 · MyBatis · Maven · Ubuntu / WSL(systemd) · Gmail SMTP
 
-> **현재 검사 대상:** OAuth(7192), Log(7193), Socket(7194). Main(7191)은 현재 모니터링 대상에 포함되지 않습니다. 대상 서버의 HTTP 응답 내용이 아닌 **TCP 연결 성공 여부**를 확인합니다.
+## 1. 프로젝트 목적과 출발점
 
-## 1. 환경별 설정 파일
+본 프로젝트는 기존 Node.js NestJS 기반 프로젝트를 Java Spring Boot로 컨버팅한 버전이다. 프레임워크 전환을 출발점으로 MSA 서비스의 연결 장애를 감지하고, 장애 발생 사실을 운영자에게 알리며, 서버별 복구 시나리오를 검증하기 위한 포트폴리오용 프로토타입이다.
+
+**모니터링 서버와 개별 MSA 서버의 책임은 구분한다.** 모니터링 서버는 대상 서비스의 TCP 연결 상태 감지와 장애 이메일 통지를 담당한다. 자동 복구 시도, 정상화 확인, 복구 이력 기록 및 결과 알림은 향후 Main/OAuth/Log/Socket 등 **각 서버별 시나리오**로 적용한다. 현재 LOCAL 배포 복구 기능을 모든 MSA 서버에 이미 적용한 것은 아니다.
+
+### 자체 자동 배포 기능을 구현한 이유
+
+Jenkins와 같은 검증된 CI/CD 도구가 있지만, 인프라 제약이나 운영 환경의 문제로 외부 배포 시스템을 사용할 수 없는 상황도 고려했다. 이에 특정 배포 도구에 전적으로 의존하지 않고, 프로젝트 내부의 스크립트와 서비스 관리 기능을 이용해 빌드, 배포, Health Check, 실패 시 롤백을 수행할 수 있도록 설계했다.
+
+현재 구현은 Jenkins를 대체하는 완성형 배포 플랫폼이 아니다. 배포 승인, 권한 관리, 이력 관리, 다양한 환경 지원 등 보완할 요소가 많다. 장기적으로 기능을 개선하고 확장하여 **이 프로젝트에 적합한 자체 배포 자동화 시스템**으로 발전시키는 것이 목표다. 현재 DEV 자동 배포에는 GitHub Actions와 self-hosted Runner를 활용하며, 자체 배포 스크립트는 실제 배포 절차를 수행한다.
+
+### 자체 자동 복구 기능을 구현한 이유
+
+서드파티 도구나 라이브러리로 장애 대응을 구성할 수도 있지만, 특정 환경에서 해당 도구를 도입하거나 사용하기 어려운 경우를 대비하고자 했다. 서버별 장애 유형과 운영 조건에 따라 개발자가 복구 절차를 직접 수정하고 확장할 수 있도록 **커스터마이징 가능한 복구 구조**를 지향한다.
+
+현재 LOCAL 환경에서는 systemd 기반 프로세스 재시작과 배포 실패 시 이전 JAR 롤백을 구현했다. 다만 프로세스가 살아 있는 상태의 무응답 장애, 모든 MSA 서버에 대한 자동 복구, 완전한 무중단 운영까지 보장하는 단계는 아니다. 향후 서버별 Health Check와 장애 판정, 복구 정책을 고도화할 계획이다.
+
+## 2. 사용자 요구사항
+
+| 요구사항 | 현재 구현 및 계획 |
+| --- | --- |
+| NestJS 기반 프로젝트를 Java Spring Boot로 전환 | Java 17 / Spring Boot 3.3.5 / Maven 기반 구성 |
+| MAIN을 포함한 MSA 서버 감시 | Main, OAuth, Log, Socket TCP 감시 대상으로 설정 |
+| MSA 장애 시 운영자 이메일 발송 | Gmail SMTP 장애 알림 구현, 향후 Slack/SMS 확장 |
+| 정상 종료와 비정상 종료 구분 | JVM 종료 처리와 systemd 종료 후처리 활용 |
+| 환경별 독립 실행 및 설정 | LOCAL/DEV/STAGE/PROD 구성 |
+| 빌드 실패 시 기존 서비스 보호 | Maven 실패 시 배포 중단 |
+| 배포 후 정상화 검증 | HTTP Health Check |
+| 배포 실패 시 이전 버전 복구 | JAR 백업 및 자동 롤백, 일부 시나리오 검증 |
+| 서버별 장애 복구 시나리오 | 개별 MSA 서버에 추후 적용할 구조로 분리 |
+| 장애 및 복구 이력 저장 | 현재 로컬 로그 활용, 보관 기간 정책은 추가 필요 |
+| 중앙 백업 서버 | 현재 로컬 환경 제약으로 미구현, 향후 구축 |
+| 실패 사례와 해결 방법 기록 | 아래 5장과 상세 가이드에 기록 |
+
+## 3. 요구사항에 대한 기술적 총평
+
+요구사항의 강점은 정상 동작뿐 아니라 **장애 감지 → 통지 → 서버별 복구 시도 → 정상화 검증 → 결과 기록**을 분리하여 검증하려는 점이다. 특히 빌드 실패가 기존 서비스에 영향을 주지 않도록 하고, 배포 실패 시 이전 JAR를 복원하도록 요구한 것은 운영 안정성 측면에서 적절하다.
+
+다만 TCP 연결 성공은 애플리케이션의 핵심 기능 정상 동작을 보장하지 않는다. 서비스별 장애 판정 기준, 재시작 횟수 제한, 복구 성공 조건, 로컬 로그 보관 기간 및 중앙 백업 정책을 추가로 정의해야 한다. 현 단계는 단일 호스트의 **운영 자동화 프로토타입**이지 완전한 고가용성 또는 무중단 복구 시스템이 아니다.
+
+## 4. 구현 구조와 서버별 시나리오
+
+### A. MSA 모니터링 및 알림
+
+모니터링 서버가 설정된 대상에 TCP 연결을 시도하고, 연결 실패 시 장애 로그와 Gmail 알림을 남긴다. 같은 장애가 지속되면 중복 메일을 줄이도록 이전 상태를 기억한다. 향후 Slack 및 문자(SMS) 알림을 추가한다.
+
+| 감시 대상 | 기본 호스트 | 기본 포트 | 환경변수 |
+| --- | --- | --- | --- |
+| Main | 127.0.0.1 | 7191 | `MONITOR_MAIN_HOST`, `MONITOR_MAIN_PORT` |
+| OAuth | 127.0.0.1 | 7102 | `MONITOR_OAUTH_HOST`, `MONITOR_OAUTH_PORT` |
+| Log | 127.0.0.1 | 7103 | `MONITOR_LOG_HOST`, `MONITOR_LOG_PORT` |
+| Socket | 127.0.0.1 | 7104 | `MONITOR_SOCKET_HOST`, `MONITOR_SOCKET_PORT` |
+
+**포트 주의:** 7192/7193/7194는 이전 문서에서 사용한 서비스 포트 예시이며, 현재 `application.yml`의 OAuth/Log/Socket 기본값은 7102/7103/7104다. 실제 대상 서비스 포트는 환경별 `.env.*`의 `MONITOR_*_PORT`로 명시해야 한다. MAIN의 기본 포트는 7191이다.
+
+### B. 개별 MSA 서버 자동 복구
+
+각 서버는 자신의 장애 상황에 맞게 **장애 발생 → 복구 시도 → Health Check → 결과 기록 및 이메일 알림**을 구현하는 것이 목표다. 현재 LOCAL systemd 재시작과 JAR 롤백 구조를 구현했지만 모든 MSA 서버에 동일하게 적용한 것은 아니다.
+
+### C. 장애 기록 및 백업
+
+장애 발생과 복구 결과는 이메일로 통지하고 각 서버의 로컬 로그에도 일정 기간 보관하는 것을 목표로 한다. 현재 배포 로그와 systemd 로그를 확인할 수 있으나 **보관 기간 자동 관리**는 추가 구현이 필요하다. 별도 중앙 백업 서버가 바람직하지만 현재 로컬 서버 환경에서는 운영이 어려워 향후 과제로 남긴다.
+
+## 5. 검증 결과, 주요 이슈 및 해결 방향
+
+| 테스트 및 이슈 | 확인 결과 | 해결 방향 / 후속 작업 |
+| --- | --- | --- |
+| 정상 Maven 빌드 및 배포 | 성공 이메일, Health Check HTTP 200 확인 | 지속 회귀 테스트 |
+| `pom.xml` 오류 | 빌드 실패 이메일 확인, 기존 서비스 유지 | 빌드 단계에서 배포 중단 유지 |
+| Health Check 강제 실패 | 이전 JAR 자동 롤백 성공 | 실제 신규 JAR 장애로 재검증 |
+| SMTP 강제 실패 | 이메일 실패 로그 남기고 배포 지속 | 알림 장애의 별도 관측 수단 검토 |
+| Java 실행 차단 테스트 | 신규/이전 JAR 모두 실행 차단되어 롤백 실패 | 신규 JAR에만 장애를 주입하도록 테스트 수정 |
+| Spring 설정 오류 테스트 | 배포 전 Maven 통합 테스트에서 실패 | 빌드 통과 후 실제 실행 실패를 재현 |
+| 운영 중 API 무응답 | 프로세스 생존만으로는 탐지 어려움 | 상시 Health Check와 복구 정책 추가 |
+| 호스트/WSL 중단 | 내부 감시도 함께 중단 가능 | 외부 감시 및 중앙 백업 서버 검토 |
+| MAIN 서버 TCP 장애 감지 및 Gmail 알림 | **성공**: `SERVER_UNREACHABLE name=main host=127.0.0.1 port=7191` 기록, `EMAIL_ALERT_SENT target=main recipients=1` 기록, 사용자 Gmail 실제 수신 확인, 모니터링 서비스 `active` 유지 | 각 MSA 서버의 자동 복구는 서버별 systemd 및 Health Check 구성에 따라 수행 |
+
+마지막 LOCAL 테스트에서 `main-api-local.service`는 정상 실행 중이었고 `/api/v1/health`가 HTTP 200을 반환했다. MAIN 장애 감지 당시에도 서비스 상태는 `active`였다. 장애 메일은 첫 연결 실패 시 발송하며 같은 장애가 지속되는 동안 매 검사마다 재발송하지 않는다. 단, 모니터링 서버 재시작 시 이전 상태가 초기화되므로 장애 메일이 다시 발송될 수 있다. **실제 신규 JAR 실행 실패 후 자동 롤백 성공은 아직 미검증**이다.
+
+### 향후 개선 및 개발 예정 사항
+
+아래 항목은 **현재 구현 완료 기능이 아니라 향후 개발 과제**다. 장애 감지와 일부 배포·롤백 기능이 동작하더라도 전체 운영 환경에서 자동 복구가 보장되는 것은 아니다.
+
+| 우선순위 | 개선 항목 | 현황 및 개선 계획 | 완료 판단 기준 |
+| --- | --- | --- | --- |
+| 1 | DEV 배포 중 실행 JAR 보호 | LOCAL은 격리 디렉터리에서 빌드하지만 DEV의 `deploy-branch.sh`는 실행 JAR가 위치할 수 있는 `target/`에서 `mvn clean package`를 수행한다. 빌드 경로와 실행·배포 경로를 분리하고 새 JAR를 안전하게 교체하도록 개선 | 실행 중 빌드 실패에도 기존 프로세스가 정상 동작하고, 배포 실패 시 이전 JAR로 복구되는 테스트 통과 |
+| 2 | API 무응답 시 자동 복구 | systemd의 `Restart=on-failure`는 프로세스 비정상 종료에 대응하지만, 프로세스가 살아 있는 상태의 API 무응답을 복구하지 못할 수 있다. 서버별 HTTP Health Check, 연속 실패 판정, 재시작 및 복구 후 재검증 정책 추가 | 프로세스 생존·API 무응답 장애를 주입하여 감지, 제한된 복구 시도, 정상화 확인 |
+| 3 | 배포 Health Check 정확성 강화 | DEV 배포 스크립트의 고정 포트와 환경별 `.env` 설정을 일치시키고, 단순 HTTP 성공뿐 아니라 실제 배포 대상 프로세스와 버전/빌드 식별자를 검증 | 다른 프로세스가 같은 포트에서 응답하거나 환경 포트가 바뀌어도 잘못된 배포 성공 판정 방지 |
+| 4 | 자체 자동 배포의 독립성 확대 | 현재 DEV Push 트리거는 GitHub Actions 및 self-hosted Runner에 의존한다. 외부 CI/CD 사용이 어려운 환경에서도 동작할 자체 트리거, 실행 작업 관리, 승인·권한·배포 이력 관리 기능을 단계적으로 개발 | GitHub Actions 없이도 승인된 배포 요청을 실행하고 진행 상태 및 결과를 추적 |
+| 5 | 운영 복구 정책 및 상태 관리 | 재시작 횟수·간격 제한, 반복 장애 시 알림 정책, 장애 상태 영속화, 재부팅 후 서비스 자동 시작 여부를 환경별로 설계하고 검증 | 반복 장애에서 무한 재시작·중복 알림을 제어하고, 서비스 재시작 및 호스트 재부팅 후에도 정책대로 동작 |
+
+## 6. 설치, 실행 및 상세 검증 가이드
+
+아래는 기존 README의 환경별 설정, 설치 방법, 실행 명령어, Gmail 설정, 테스트 및 장애 이슈, DEV 자동 배포 가이드를 보존한 내용이다.
+
+### 6.1 환경별 설정 파일
 
 `.example` 파일을 사용하지 않습니다. 프로젝트 ZIP에는 아래 네 파일이 있으며 각 파일 상단에 **환경의 목적과 설정 변수 설명**을 적었습니다.
 
@@ -17,11 +111,11 @@ MSA 서비스의 TCP 연결 상태를 확인하고 장애를 Gmail로 알립니�
 | `.env.stage` | 운영 배포 전 사전 검증 | 7003 | `start:stage` |
 | `.env.prod` | 운영 서버에서 실제 MSA 상태 감시 | 7004 | `start:prod` |
 
-각 파일에서 `MONITOR_OAUTH_HOST`, `MONITOR_LOG_HOST`, `MONITOR_SOCKET_HOST` 및 대응 포트를 실제 서버 주소에 맞게 변경하세요. 프로필마다 발신자, 수신자, 검사 주기 등을 독립적으로 설정할 수 있습니다.
+각 파일에서 `MONITOR_MAIN_HOST`, `MONITOR_OAUTH_HOST`, `MONITOR_LOG_HOST`, `MONITOR_SOCKET_HOST` 및 대응 포트를 실제 서버 주소에 맞게 변경하세요. 프로필마다 발신자, 수신자, 검사 주기 등을 독립적으로 설정할 수 있습니다.
 
 **주의:** 이 ZIP의 `.env.*` 파일에는 예시 Gmail 계정과 비밀번호만 들어 있습니다. 실제 Gmail 앱 비밀번호를 채워 넣은 `.env.*`는 `.gitignore`에 의해 Git 추적에서 제외됩니다. 따라서 **ZIP에는 설정 파일이 포함되지만 GitHub에서 새로 clone한 저장소에는 해당 파일이 없을 수 있습니다.** Git 배포 시에는 비밀정보를 제외한 설정 파일을 안전하게 배포하는 방식(배포 시스템의 secret 주입 등)을 별도로 마련해야 합니다. 실제 비밀번호를 GitHub에 올리지 마세요.
 
-## 2. 준비 및 빌드
+### 6.2 준비 및 빌드
 
 Ubuntu 또는 WSL Ubuntu에서 systemd를 사용합니다. JDK 17, Maven, Python 3가 필요합니다. Maven은 프로젝트 의존성을 내려받지만 JDK나 Maven 프로그램 자체를 설치하지는 않습니다.
 
@@ -34,7 +128,7 @@ mvn clean install
 
 `BUILD SUCCESS`가 표시되면 빌드 성공입니다. 빌드 중 권한 문제가 생기면 해당 경로의 쓰기 권한을 확인하세요.
 
-## 3. local 환경 실행
+### 6.3 local 환경 실행
 
 ```bash
 # 메일 알림을 사용하려면 먼저 .env.local을 편집하세요.
@@ -59,7 +153,7 @@ logs:local
 
 각 명령의 `local`을 `dev`, `stage`, `prod`로 바꾸면 해당 프로필에 적용됩니다. **같은 머신에서 여러 프로필을 동시에 실행하려면 각 포트가 충돌하지 않아야 합니다.**
 
-## 4. 메일 설정
+### 6.4 메일 설정
 
 각 `.env.*`에서 다음 항목을 설정합니다.
 
@@ -76,7 +170,7 @@ MONITOR_EMAIL_TO=your-recipient@example.com
 
 `MAIL_PASSWORD`에는 Gmail **앱 비밀번호**를 사용합니다. 일반 로그인 비밀번호가 아닙니다. 설정을 바꾸면 해당 프로필의 서비스를 재시작해야 적용됩니다.
 
-## 5. 장애 및 종료 이메일 검증
+### 6.5 장애 및 종료 이메일 검증
 
 현재 기본값은 `MONITORING_INTERVAL_MS=600000`(10분), 첫 검사 지연은 1초입니다. 실제 MSA가 해당 포트에서 실행 중이지 않으면 장애를 감지할 수 있습니다.
 
@@ -92,7 +186,7 @@ sudo journalctl -u main-api-local.service -n 150 --no-pager | grep -E 'APPLICATI
 - **비정상 종료:** systemd `ExecStopPost`가 프로세스 종료 후 별도 Python SMTP 스크립트로 이메일 발송을 시도합니다. 비정상 종료 직전 이메일을 보낼 수 있는 것은 아닙니다.
 - **제약:** PC/WSL 자체 종료, 네트워크 단절, 전원 차단, SMTP 장애 등에서는 이메일 발송을 보장할 수 없습니다. 이런 경우에는 다른 머신에서 동작하는 외부 감시가 필요합니다.
 
-## 6. 프로젝트 구성
+### 6.6 프로젝트 구성
 
 | 경로 | 설명 |
 | --- | --- |
@@ -105,14 +199,14 @@ sudo journalctl -u main-api-local.service -n 150 --no-pager | grep -E 'APPLICATI
 | `scripts/abnormal-exit-email.py` | 비정상 종료 후 이메일 전송 시도 |
 | `.env.local`, `.env.dev`, `.env.stage`, `.env.prod` | 환경별 설정 파일 |
 
-## 7. 운영 주의사항
+### 6.7 운영 주의사항
 
 - 비밀정보가 포함된 `.env.*`는 Git에 커밋하지 마세요. `git status --short` 및 `git ls-files`로 추적 여부를 확인하세요.
 - `start:<환경>` 명령은 systemd를 사용하므로 `systemd`가 PID 1로 실행되어야 합니다.
-- 이 ZIP은 모니터링 서버 프로젝트이며, 실제 OAuth/Log/Socket MSA 서버의 구현은 포함하지 않습니다.
+- 이 ZIP은 모니터링 서버 프로젝트이며, 실제 Main/OAuth/Log/Socket MSA 서버의 구현은 포함하지 않습니다.
 - 환경별 메일 발송과 비정상 종료 처리는 배포할 서버에서 직접 검증해야 합니다.
 
-## 8. DEV 자동 배포 (GitHub Actions + 로컬 WSL)
+### 6.8 DEV 자동 배포 (GitHub Actions + 로컬 WSL)
 
 **현재 구현 및 검증 범위는 DEV 단일 WSL 프로토타입입니다.** `dev` 브랜치 Push를 감지해 GitHub Actions가 온라인 상태인 self-hosted Runner에 배포 작업을 할당합니다. Runner가 설치된 **그 WSL 내부**에서 Maven 빌드, Spring Boot systemd 재시작, 헬스체크를 수행합니다. `stage`, `prod`, EC2 자동 배포는 아직 이 워크플로의 대상이 아닙니다.
 
@@ -128,6 +222,18 @@ sudo journalctl -u main-api-local.service -n 150 --no-pager | grep -E 'APPLICATI
 | 실행 서비스 | systemd 설치 스크립트 포함 | `main-api-dev.service`, 기본 포트 7002 |
 | 인증/환경 | 비밀번호·토큰 커밋 금지 | 로컬 `.env.dev`, Git 인증, Runner 등록 토큰(최초 등록 시) |
 | 자동 실행 | GitHub Actions가 Job 생성 | Runner systemd 서비스가 Job 수신·실행 |
+
+### GitHub Actions 웹 설정 가이드 (최초 1회)
+
+아래는 **새로운 개발자나 서버를 추가할 때 참고하는 설정 절차**다. 이미 GitHub Actions 및 Runner를 설정한 개발자는 다시 등록하지 말고, 다음의 설정값과 실행 상태만 확인한다.
+
+1. GitHub 저장소의 **Settings → Actions → General**에서 Actions 실행이 허용되어 있는지 확인한다. 저장소 정책상 실행이 제한된 경우 관리자 권한이 필요할 수 있다.
+2. **Settings → Environments**에서 이름이 정확히 `dev`인 Environment를 생성하거나 기존 설정을 연다. **Environment variables**에 `DEPLOY_ROOT`를 추가한다. 값은 Runner가 실행되는 WSL 내부 DEV 체크아웃의 **절대 경로**(예: `/home/<WSL사용자>/deploy-checkouts/dev`)다. 실제 설치 경로가 기본값 `$HOME/deploy-checkouts/dev`라면 워크플로가 그 기본값을 사용하므로 변수는 생략할 수도 있다.
+3. **Settings → Actions → Runners**에서 해당 WSL의 self-hosted Runner가 `Online`인지, 라벨에 `self-hosted`, `linux`, `deploy-dev`가 포함되어 있는지 확인한다. 신규 설치할 때만 **New self-hosted runner**에서 Linux용 등록 토큰을 발급한다. 토큰은 공유하거나 저장소에 커밋하지 않는다.
+4. 저장소의 `.github/workflows/deploy.yml`이 **원격 `dev` 브랜치에도 존재**해야 한다. 현재 워크플로는 `dev` Push 시 실행되며, **Actions → Deploy monitoring server**에서 실행 이력과 Job 로그를 확인할 수 있다. `workflow_dispatch`를 사용한 수동 실행도 `dev` 브랜치를 선택해야 한다.
+5. **Actions** 탭에서 Job이 `queued`라면 Runner 온라인 여부와 라벨, Environment 승인 대기 여부를 확인한다. `Success`로 끝났더라도 실제 WSL에서 `curl -fsS http://localhost:7002/api/v1/health`로 서버 응답을 별도 검증한다.
+
+**설정 시 주의:** GitHub Actions는 배포 요청을 전달하고, 실제 빌드·재시작·검증은 self-hosted Runner가 있는 WSL에서 실행한다. WSL이 종료된 상태에서는 작업이 대기할 수 있다. 현재 구성은 **한 번의 Job을 한 대의 Runner에서 실행**하므로 같은 라벨의 모든 개발자 PC에 동시 배포하는 방식이 아니다. Runner를 여러 개 설치하거나 기존 Runner를 교체하기 전에 현재 설정을 확인한다.
 
 ### 최초 1회: 각 개발자의 WSL 설정
 

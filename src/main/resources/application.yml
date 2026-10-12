@@ -34,6 +34,9 @@ monitoring:
     enabled: ${MONITORING_EMAIL_ENABLED:false}
     recipients: ${MONITOR_EMAIL_TO:}
   targets:
+    - name: main
+      host: ${MONITOR_MAIN_HOST:127.0.0.1}
+      port: ${MONITOR_MAIN_PORT:7191}
     - name: oauth
       host: ${MONITOR_OAUTH_HOST:127.0.0.1}
       port: ${MONITOR_OAUTH_PORT:7102}
