@@ -56,7 +56,7 @@ Java 17 · Spring Boot 3.3.5 · MyBatis · Maven · Ubuntu / WSL(systemd) · Gma
 
 장애 발생과 복구 결과는 이메일로 통지하고 각 서버의 로컬 로그에도 일정 기간 보관하는 것을 목표로 한다. 현재 배포 로그와 systemd 로그를 확인할 수 있으나 **보관 기간 자동 관리**는 추가 구현이 필요하다. 별도 중앙 백업 서버가 바람직하지만 현재 로컬 서버 환경에서는 운영이 어려워 향후 과제로 남긴다.
 
-## 5. 검증 결과, 주요 이슈 및 해결 방향 (2026-10-12)
+## 5. 검증 결과, 주요 이슈 및 해결 방향
 
 | 테스트 및 이슈 | 확인 결과 | 해결 방향 / 후속 작업 |
 | --- | --- | --- |
@@ -68,7 +68,7 @@ Java 17 · Spring Boot 3.3.5 · MyBatis · Maven · Ubuntu / WSL(systemd) · Gma
 | Spring 설정 오류 테스트 | 배포 전 Maven 통합 테스트에서 실패 | 빌드 통과 후 실제 실행 실패를 재현 |
 | 운영 중 API 무응답 | 프로세스 생존만으로는 탐지 어려움 | 상시 Health Check와 복구 정책 추가 |
 | 호스트/WSL 중단 | 내부 감시도 함께 중단 가능 | 외부 감시 및 중앙 백업 서버 검토 |
-| MAIN 서버 TCP 장애 감지 및 Gmail 알림 (2026-10-12) | **성공**: 23:29:34 KST `SERVER_UNREACHABLE name=main host=127.0.0.1 port=7191` 기록, 23:29:38 KST `EMAIL_ALERT_SENT target=main recipients=1` 기록, 사용자 Gmail 실제 수신 확인, 모니터링 서비스 `active` 유지 | MAIN TCP 복구 감지(`SERVER_RECOVERED`)는 미검증. 현재 복구 이메일은 발송하지 않음 |
+| MAIN 서버 TCP 장애 감지 및 Gmail 알림 | **성공**: `SERVER_UNREACHABLE name=main host=127.0.0.1 port=7191` 기록, `EMAIL_ALERT_SENT target=main recipients=1` 기록, 사용자 Gmail 실제 수신 확인, 모니터링 서비스 `active` 유지 | MAIN TCP 복구 감지(`SERVER_RECOVERED`)는 미검증. 현재 복구 이메일은 발송하지 않음 |
 
 마지막 LOCAL 테스트에서 `main-api-local.service`는 정상 실행 중이었고 `/api/v1/health`가 HTTP 200을 반환했다. MAIN 장애 감지 당시에도 서비스 상태는 `active`였다. 장애 메일은 첫 연결 실패 시 발송하며 같은 장애가 지속되는 동안 매 검사마다 재발송하지 않는다. 단, 모니터링 서버 재시작 시 이전 상태가 초기화되므로 장애 메일이 다시 발송될 수 있다. **실제 신규 JAR 실행 실패 후 자동 롤백 성공은 아직 미검증**이다.
 
