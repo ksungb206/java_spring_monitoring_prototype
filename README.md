@@ -223,6 +223,18 @@ sudo journalctl -u main-api-local.service -n 150 --no-pager | grep -E 'APPLICATI
 | 인증/환경 | 비밀번호·토큰 커밋 금지 | 로컬 `.env.dev`, Git 인증, Runner 등록 토큰(최초 등록 시) |
 | 자동 실행 | GitHub Actions가 Job 생성 | Runner systemd 서비스가 Job 수신·실행 |
 
+### GitHub Actions 웹 설정 가이드 (최초 1회)
+
+아래는 **새로운 개발자나 서버를 추가할 때 참고하는 설정 절차**다. 이미 GitHub Actions 및 Runner를 설정한 개발자는 다시 등록하지 말고, 다음의 설정값과 실행 상태만 확인한다.
+
+1. GitHub 저장소의 **Settings → Actions → General**에서 Actions 실행이 허용되어 있는지 확인한다. 저장소 정책상 실행이 제한된 경우 관리자 권한이 필요할 수 있다.
+2. **Settings → Environments**에서 이름이 정확히 `dev`인 Environment를 생성하거나 기존 설정을 연다. **Environment variables**에 `DEPLOY_ROOT`를 추가한다. 값은 Runner가 실행되는 WSL 내부 DEV 체크아웃의 **절대 경로**(예: `/home/<WSL사용자>/deploy-checkouts/dev`)다. 실제 설치 경로가 기본값 `$HOME/deploy-checkouts/dev`라면 워크플로가 그 기본값을 사용하므로 변수는 생략할 수도 있다.
+3. **Settings → Actions → Runners**에서 해당 WSL의 self-hosted Runner가 `Online`인지, 라벨에 `self-hosted`, `linux`, `deploy-dev`가 포함되어 있는지 확인한다. 신규 설치할 때만 **New self-hosted runner**에서 Linux용 등록 토큰을 발급한다. 토큰은 공유하거나 저장소에 커밋하지 않는다.
+4. 저장소의 `.github/workflows/deploy.yml`이 **원격 `dev` 브랜치에도 존재**해야 한다. 현재 워크플로는 `dev` Push 시 실행되며, **Actions → Deploy monitoring server**에서 실행 이력과 Job 로그를 확인할 수 있다. `workflow_dispatch`를 사용한 수동 실행도 `dev` 브랜치를 선택해야 한다.
+5. **Actions** 탭에서 Job이 `queued`라면 Runner 온라인 여부와 라벨, Environment 승인 대기 여부를 확인한다. `Success`로 끝났더라도 실제 WSL에서 `curl -fsS http://localhost:7002/api/v1/health`로 서버 응답을 별도 검증한다.
+
+**설정 시 주의:** GitHub Actions는 배포 요청을 전달하고, 실제 빌드·재시작·검증은 self-hosted Runner가 있는 WSL에서 실행한다. WSL이 종료된 상태에서는 작업이 대기할 수 있다. 현재 구성은 **한 번의 Job을 한 대의 Runner에서 실행**하므로 같은 라벨의 모든 개발자 PC에 동시 배포하는 방식이 아니다. Runner를 여러 개 설치하거나 기존 Runner를 교체하기 전에 현재 설정을 확인한다.
+
 ### 최초 1회: 각 개발자의 WSL 설정
 
 1. Windows에서 **WSL2 Ubuntu**를 설치하고 WSL 안에서 systemd를 활성화합니다. `/etc/wsl.conf`에 아래 내용을 설정한 뒤 **Windows PowerShell에서** `wsl --shutdown`을 실행하고 Ubuntu를 다시 엽니다.
