@@ -18,13 +18,28 @@ for dir in /usr/lib/jvm/java-17-openjdk-* /usr/lib/jvm/temurin-17-*; do
   if [[ -x "$dir/bin/java" ]]; then JAVA="$dir/bin/java"; break; fi
 done
 [[ -n "$JAVA" ]] || { echo 'ERROR: Java 17 missing. Install openjdk-17-jdk.' >&2; exit 1; }
-JAR="$ROOT/target/main-api-spring-0.1.0.jar"
+JAR="$ROOT/run/$PROFILE/application.jar"
+BUILD_DIR=""
+BUILT_JAR=""
+cleanup_build() { if [[ -n "$BUILD_DIR" && -d "$BUILD_DIR" ]]; then rm -rf "$BUILD_DIR"; fi; }
+trap cleanup_build EXIT
 build_jar() {
-  [[ -f "$ENV_FILE" ]] || { echo "ERROR: $ENV_FILE not found. Edit or create .env.${PROFILE} with your settings." >&2; exit 1; }
-  command -v mvn >/dev/null || { echo 'ERROR: Maven missing' >&2; exit 1; }
-  echo "Building $PROFILE (tests included)..."
-  (cd "$ROOT" && JAVA_HOME="$(dirname "$(dirname "$JAVA")")" PATH="$(dirname "$JAVA"):$PATH" mvn clean package)
-  [[ -f "$JAR" ]] || { echo "ERROR: Built JAR missing: $JAR" >&2; exit 1; }
+  [[ -f "$ENV_FILE" ]] || { echo "ERROR: $ENV_FILE not found." >&2; return 1; }
+  command -v mvn >/dev/null || { echo 'ERROR: Maven missing' >&2; return 1; }
+  command -v tar >/dev/null || { echo 'ERROR: tar missing' >&2; return 1; }
+  BUILD_DIR="$(mktemp -d)"
+  echo "Building $PROFILE in isolated directory (tests included)..."
+  # Never clean/overwrite a JAR used by a running systemd service.
+  (cd "$ROOT" && tar --exclude='./.git' --exclude='./target' --exclude='./run' --exclude='./.env*' -cf - .) | (cd "$BUILD_DIR" && tar -xf -)
+  (cd "$BUILD_DIR" && JAVA_HOME="$(dirname "$(dirname "$JAVA")")" PATH="$(dirname "$JAVA"):$PATH" mvn clean package)
+  BUILT_JAR="$BUILD_DIR/target/main-api-spring-0.1.0.jar"
+  [[ -s "$BUILT_JAR" ]] || { echo "ERROR: Built JAR missing: $BUILT_JAR" >&2; return 1; }
+}
+deploy_jar() {
+  mkdir -p "$ROOT/run/$PROFILE"
+  local staged="$ROOT/run/$PROFILE/.application.jar.new.$$"
+  cp "$BUILT_JAR" "$staged"
+  mv -f "$staged" "$JAR"
 }
 # Resolve the same PORT value that systemd loads from EnvironmentFile.
 # Do not source .env files: they are environment files, not shell scripts.
@@ -63,7 +78,6 @@ wait_for_health() {
   return 1
 }
 install_unit() {
-  build_jar
   local tmp; tmp="$(mktemp)"
   cat > "$tmp" <<EOF
 [Unit]
@@ -124,10 +138,32 @@ EOF
   echo "Independent watchdog removed; Spring lifecycle owns email alerts."
 }
 case "$ACTION" in
-  install) install_unit;;
-  start)
-    if [[ ! -f "$UNIT_PATH" ]] || ! grep -Fq "WorkingDirectory=$ROOT" "$UNIT_PATH" || [[ ! -f "$JAR" ]]; then install_unit; else build_jar; fi
-    bash "$ROOT/scripts/service-event.sh" "$PROFILE" MANUAL_START "requested_by=$(id -un)"
+  install)
+    build_jar
+    # Do not replace the running JAR during installation.
+    if sudo systemctl is-active --quiet "$UNIT" 2>/dev/null; then
+      echo "ERROR: $UNIT is running; use restart to deploy a new build." >&2
+      exit 1
+    fi
+    deploy_jar
+    install_unit
+    ;;
+  start|restart)
+    # A build failure must leave the current process and deployed JAR untouched.
+    build_jar
+    # Installing a unit must happen after the build and before deployment.
+    if [[ ! -f "$UNIT_PATH" ]] || ! grep -Fq "WorkingDirectory=$ROOT" "$UNIT_PATH" || ! grep -Fq "ExecStart=$JAVA -jar $JAR " "$UNIT_PATH"; then
+      install_unit
+    fi
+    mkdir -p "$ROOT/run/$PROFILE"
+    if sudo systemctl is-active --quiet "$UNIT" 2>/dev/null; then
+      printf 'MANUAL_RESTART\n' > "$ROOT/run/$PROFILE/shutdown-reason"
+      bash "$ROOT/scripts/service-event.sh" "$PROFILE" MANUAL_RESTART "requested_by=$(id -un)"
+      sudo systemctl stop "$UNIT"
+    else
+      bash "$ROOT/scripts/service-event.sh" "$PROFILE" MANUAL_START "requested_by=$(id -un)"
+    fi
+    deploy_jar
     sudo systemctl start "$UNIT"
     sudo systemctl stop "$WATCHDOG_UNIT" 2>/dev/null || true
     wait_for_health
@@ -139,16 +175,6 @@ case "$ACTION" in
     bash "$ROOT/scripts/service-event.sh" "$PROFILE" MANUAL_STOP "requested_by=$(id -un)"
     sudo systemctl stop "$UNIT"
     sudo systemctl stop "$WATCHDOG_UNIT" 2>/dev/null || true
-    ;;
-  restart)
-    if [[ ! -f "$UNIT_PATH" ]] || ! grep -Fq "WorkingDirectory=$ROOT" "$UNIT_PATH" || [[ ! -f "$JAR" ]]; then install_unit; else build_jar; fi
-    mkdir -p "$ROOT/run/$PROFILE"
-    printf 'MANUAL_RESTART\n' > "$ROOT/run/$PROFILE/shutdown-reason"
-    bash "$ROOT/scripts/service-event.sh" "$PROFILE" MANUAL_RESTART "requested_by=$(id -un)"
-    sudo systemctl restart "$UNIT"
-    sudo systemctl stop "$WATCHDOG_UNIT" 2>/dev/null || true
-    wait_for_health
-    sudo systemctl --no-pager status "$UNIT" || true
     ;;
   status) sudo systemctl --no-pager status "$UNIT";;
   logs) sudo journalctl -u "$UNIT" -f -n 100;;
