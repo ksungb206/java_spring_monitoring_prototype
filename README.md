@@ -68,7 +68,7 @@ Java 17 · Spring Boot 3.3.5 · MyBatis · Maven · Ubuntu / WSL(systemd) · Gma
 | Spring 설정 오류 테스트 | 배포 전 Maven 통합 테스트에서 실패 | 빌드 통과 후 실제 실행 실패를 재현 |
 | 운영 중 API 무응답 | 프로세스 생존만으로는 탐지 어려움 | 상시 Health Check와 복구 정책 추가 |
 | 호스트/WSL 중단 | 내부 감시도 함께 중단 가능 | 외부 감시 및 중앙 백업 서버 검토 |
-| MAIN 서버 TCP 장애 감지 및 Gmail 알림 | **성공**: `SERVER_UNREACHABLE name=main host=127.0.0.1 port=7191` 기록, `EMAIL_ALERT_SENT target=main recipients=1` 기록, 사용자 Gmail 실제 수신 확인, 모니터링 서비스 `active` 유지 | MAIN TCP 복구 감지(`SERVER_RECOVERED`)는 미검증. 현재 복구 이메일은 발송하지 않음 |
+| MAIN 서버 TCP 장애 감지 및 Gmail 알림 | **성공**: `SERVER_UNREACHABLE name=main host=127.0.0.1 port=7191` 기록, `EMAIL_ALERT_SENT target=main recipients=1` 기록, 사용자 Gmail 실제 수신 확인, 모니터링 서비스 `active` 유지 | 각 MSA 서버의 자동 복구는 서버별 systemd 및 Health Check 구성에 따라 수행 |
 
 마지막 LOCAL 테스트에서 `main-api-local.service`는 정상 실행 중이었고 `/api/v1/health`가 HTTP 200을 반환했다. MAIN 장애 감지 당시에도 서비스 상태는 `active`였다. 장애 메일은 첫 연결 실패 시 발송하며 같은 장애가 지속되는 동안 매 검사마다 재발송하지 않는다. 단, 모니터링 서버 재시작 시 이전 상태가 초기화되므로 장애 메일이 다시 발송될 수 있다. **실제 신규 JAR 실행 실패 후 자동 롤백 성공은 아직 미검증**이다.
 
