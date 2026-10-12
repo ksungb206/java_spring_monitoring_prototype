@@ -45,7 +45,7 @@ deploy_jar() {
 # Do not source .env files: they are environment files, not shell scripts.
 health_port() {
   local value
-  value="$(sed -nE 's/^[[:space:]]*PORT[[:space:]]*=[[:space:]]*(.*)$/\\1/p' "$ENV_FILE" | tail -n 1)"
+  value="$(sed -nE 's/^[[:space:]]*PORT[[:space:]]*=[[:space:]]*(.*)$/\1/p' "$ENV_FILE" | tail -n 1)"
   value="${value//[[:space:]]/}"
   value="${value:-7001}"
   if [[ ! "$value" =~ ^[0-9]+$ ]] || (( 10#$value < 1 || 10#$value > 65535 )); then
