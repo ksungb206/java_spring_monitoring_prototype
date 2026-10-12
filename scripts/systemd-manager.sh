@@ -137,43 +137,79 @@ EOF
   echo "Service installed: $UNIT (not enabled for boot auto-start)"
   echo "Independent watchdog removed; Spring lifecycle owns email alerts."
 }
+deployment_log() {
+  mkdir -p "$ROOT/logs/$PROFILE/deployment"
+  printf '%s profile=%s %s\\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$PROFILE" "$*" >> "$ROOT/logs/$PROFILE/deployment/deployment-$(date '+%Y-%m-%d').log"
+}
 send_deploy_email() {
   local event="$1" detail="$2"
-  if ! /usr/bin/python3 "$ROOT/scripts/deployment-email.py" "$PROFILE" "$event" "$detail"; then
+  if /usr/bin/python3 "$ROOT/scripts/deployment-email.py" "$PROFILE" "$event" "$detail"; then
+    deployment_log "event=EMAIL_SENT type=$event"
+  else
+    deployment_log "event=EMAIL_FAILED type=$event"
     echo "WARNING: Could not send $event email for $PROFILE" >&2
   fi
 }
 build_with_notification() {
   if build_jar; then
+    deployment_log "event=BUILD_SUCCEEDED"
     send_deploy_email BUILD_SUCCEEDED "Maven build and tests passed; deployment has not started."
   else
     local rc=$?
+    deployment_log "event=BUILD_FAILED exit=$rc"
     send_deploy_email BUILD_FAILED "Maven build or tests failed (exit=$rc); existing service left untouched."
     return "$rc"
   fi
 }
 apply_build() {
-  # Set a failure handler only after a successful build.
-  # It covers stop, JAR placement, service start and readiness failures.
-  trap 'rc=$?; trap - ERR; send_deploy_email DEPLOY_FAILED "Service application or health check failed (exit=$rc)."; exit "$rc"' ERR
+  local was_active=false had_previous=false failure="" rollback="not_needed"
+  local previous="$ROOT/run/$PROFILE/previous.jar"
+  # Before any disruption, validate unit configuration and stage a recovery copy.
   if [[ ! -f "$UNIT_PATH" ]] || ! grep -Fq "WorkingDirectory=$ROOT" "$UNIT_PATH" || ! grep -Fq "ExecStart=$JAVA -jar $JAR " "$UNIT_PATH"; then
-    install_unit
+    if ! install_unit; then
+      failure="unit_install_failed"
+    fi
   fi
   mkdir -p "$ROOT/run/$PROFILE"
-  if sudo systemctl is-active --quiet "$UNIT" 2>/dev/null; then
-    printf 'MANUAL_RESTART\\n' > "$ROOT/run/$PROFILE/shutdown-reason"
-    bash "$ROOT/scripts/service-event.sh" "$PROFILE" MANUAL_RESTART "requested_by=$(id -un)"
-    sudo systemctl stop "$UNIT"
-  else
-    bash "$ROOT/scripts/service-event.sh" "$PROFILE" MANUAL_START "requested_by=$(id -un)"
+  if [[ -z "$failure" && -f "$JAR" ]]; then
+    if cp "$JAR" "$previous"; then had_previous=true; else failure="backup_failed"; fi
   fi
-  deploy_jar
-  sudo systemctl start "$UNIT"
-  sudo systemctl stop "$WATCHDOG_UNIT" 2>/dev/null || true
-  wait_for_health
-  send_deploy_email DEPLOY_SUCCEEDED "New JAR applied and health endpoint returned HTTP 200."
-  trap - ERR
-  sudo systemctl --no-pager status "$UNIT" || true
+  if [[ -z "$failure" ]] && sudo systemctl is-active --quiet "$UNIT" 2>/dev/null; then
+    was_active=true
+    printf 'MANUAL_RESTART\\n' > "$ROOT/run/$PROFILE/shutdown-reason"
+    bash "$ROOT/scripts/service-event.sh" "$PROFILE" MANUAL_RESTART "requested_by=$(id -un)" || true
+    if ! sudo systemctl stop "$UNIT"; then failure="stop_failed"; fi
+  elif [[ -z "$failure" ]]; then
+    bash "$ROOT/scripts/service-event.sh" "$PROFILE" MANUAL_START "requested_by=$(id -un)" || true
+  fi
+  if [[ -z "$failure" ]]; then
+    if ! deploy_jar; then failure="jar_install_failed"; fi
+  fi
+  if [[ -z "$failure" ]]; then
+    if ! sudo systemctl start "$UNIT"; then failure="start_failed"
+    elif ! wait_for_health; then failure="health_failed"; fi
+  fi
+  if [[ -z "$failure" ]]; then
+    sudo systemctl stop "$WATCHDOG_UNIT" 2>/dev/null || true
+    deployment_log "event=DEPLOY_SUCCEEDED"
+    send_deploy_email DEPLOY_SUCCEEDED "New JAR applied and health endpoint returned HTTP 200."
+    sudo systemctl --no-pager status "$UNIT" || true
+    return 0
+  fi
+  deployment_log "event=DEPLOY_FAILED reason=$failure"
+  # If an earlier deployed JAR exists, restore it even when the new start failed.
+  if [[ "$had_previous" == true ]]; then
+    if sudo systemctl stop "$UNIT" && cp "$previous" "$JAR" && { [[ "$was_active" != true ]] || { sudo systemctl start "$UNIT" && wait_for_health; }; }; then
+      rollback="succeeded"
+    else
+      rollback="failed"
+    fi
+  else
+    rollback="unavailable_no_previous_jar"
+  fi
+  deployment_log "event=ROLLBACK result=$rollback"
+  send_deploy_email DEPLOY_FAILED "Deployment failed ($failure); rollback=$rollback."
+  return 1
 }
 case "$ACTION" in
   install)
