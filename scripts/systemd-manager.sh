@@ -137,41 +137,61 @@ EOF
   echo "Service installed: $UNIT (not enabled for boot auto-start)"
   echo "Independent watchdog removed; Spring lifecycle owns email alerts."
 }
+send_deploy_email() {
+  local event="$1" detail="$2"
+  if ! /usr/bin/python3 "$ROOT/scripts/deployment-email.py" "$PROFILE" "$event" "$detail"; then
+    echo "WARNING: Could not send $event email for $PROFILE" >&2
+  fi
+}
+build_with_notification() {
+  if build_jar; then
+    send_deploy_email BUILD_SUCCEEDED "Maven build and tests passed; deployment has not started."
+  else
+    local rc=$?
+    send_deploy_email BUILD_FAILED "Maven build or tests failed (exit=$rc); existing service left untouched."
+    return "$rc"
+  fi
+}
+apply_build() {
+  # Set a failure handler only after a successful build.
+  # It covers stop, JAR placement, service start and readiness failures.
+  trap 'rc=$?; trap - ERR; send_deploy_email DEPLOY_FAILED "Service application or health check failed (exit=$rc)."; exit "$rc"' ERR
+  if [[ ! -f "$UNIT_PATH" ]] || ! grep -Fq "WorkingDirectory=$ROOT" "$UNIT_PATH" || ! grep -Fq "ExecStart=$JAVA -jar $JAR " "$UNIT_PATH"; then
+    install_unit
+  fi
+  mkdir -p "$ROOT/run/$PROFILE"
+  if sudo systemctl is-active --quiet "$UNIT" 2>/dev/null; then
+    printf 'MANUAL_RESTART\\n' > "$ROOT/run/$PROFILE/shutdown-reason"
+    bash "$ROOT/scripts/service-event.sh" "$PROFILE" MANUAL_RESTART "requested_by=$(id -un)"
+    sudo systemctl stop "$UNIT"
+  else
+    bash "$ROOT/scripts/service-event.sh" "$PROFILE" MANUAL_START "requested_by=$(id -un)"
+  fi
+  deploy_jar
+  sudo systemctl start "$UNIT"
+  sudo systemctl stop "$WATCHDOG_UNIT" 2>/dev/null || true
+  wait_for_health
+  send_deploy_email DEPLOY_SUCCEEDED "New JAR applied and health endpoint returned HTTP 200."
+  trap - ERR
+  sudo systemctl --no-pager status "$UNIT" || true
+}
 case "$ACTION" in
   install)
-    build_jar
-    # Do not replace the running JAR during installation.
     if sudo systemctl is-active --quiet "$UNIT" 2>/dev/null; then
       echo "ERROR: $UNIT is running; use restart to deploy a new build." >&2
       exit 1
     fi
+    build_with_notification
     deploy_jar
     install_unit
     ;;
   start|restart)
-    # A build failure must leave the current process and deployed JAR untouched.
-    build_jar
-    # Installing a unit must happen after the build and before deployment.
-    if [[ ! -f "$UNIT_PATH" ]] || ! grep -Fq "WorkingDirectory=$ROOT" "$UNIT_PATH" || ! grep -Fq "ExecStart=$JAVA -jar $JAR " "$UNIT_PATH"; then
-      install_unit
-    fi
-    mkdir -p "$ROOT/run/$PROFILE"
-    if sudo systemctl is-active --quiet "$UNIT" 2>/dev/null; then
-      printf 'MANUAL_RESTART\n' > "$ROOT/run/$PROFILE/shutdown-reason"
-      bash "$ROOT/scripts/service-event.sh" "$PROFILE" MANUAL_RESTART "requested_by=$(id -un)"
-      sudo systemctl stop "$UNIT"
-    else
-      bash "$ROOT/scripts/service-event.sh" "$PROFILE" MANUAL_START "requested_by=$(id -un)"
-    fi
-    deploy_jar
-    sudo systemctl start "$UNIT"
-    sudo systemctl stop "$WATCHDOG_UNIT" 2>/dev/null || true
-    wait_for_health
-    sudo systemctl --no-pager status "$UNIT" || true
+    build_with_notification
+    apply_build
     ;;
   stop)
     mkdir -p "$ROOT/run/$PROFILE"
-    printf 'MANUAL_STOP\n' > "$ROOT/run/$PROFILE/shutdown-reason"
+    printf 'MANUAL_STOP\\n' > "$ROOT/run/$PROFILE/shutdown-reason"
     bash "$ROOT/scripts/service-event.sh" "$PROFILE" MANUAL_STOP "requested_by=$(id -un)"
     sudo systemctl stop "$UNIT"
     sudo systemctl stop "$WATCHDOG_UNIT" 2>/dev/null || true
