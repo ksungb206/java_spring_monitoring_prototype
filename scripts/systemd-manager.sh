@@ -139,7 +139,7 @@ EOF
 }
 deployment_log() {
   mkdir -p "$ROOT/logs/$PROFILE/deployment"
-  printf '%s profile=%s %s\\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$PROFILE" "$*" >> "$ROOT/logs/$PROFILE/deployment/deployment-$(date '+%Y-%m-%d').log"
+  printf '%s profile=%s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$PROFILE" "$*" >> "$ROOT/logs/$PROFILE/deployment/deployment-$(date '+%Y-%m-%d').log"
 }
 send_deploy_email() {
   local event="$1" detail="$2"
@@ -176,7 +176,7 @@ apply_build() {
   fi
   if [[ -z "$failure" ]] && sudo systemctl is-active --quiet "$UNIT" 2>/dev/null; then
     was_active=true
-    printf 'MANUAL_RESTART\\n' > "$ROOT/run/$PROFILE/shutdown-reason"
+    printf 'MANUAL_RESTART\n' > "$ROOT/run/$PROFILE/shutdown-reason"
     bash "$ROOT/scripts/service-event.sh" "$PROFILE" MANUAL_RESTART "requested_by=$(id -un)" || true
     if ! sudo systemctl stop "$UNIT"; then failure="stop_failed"; fi
   elif [[ -z "$failure" ]]; then
@@ -227,7 +227,7 @@ case "$ACTION" in
     ;;
   stop)
     mkdir -p "$ROOT/run/$PROFILE"
-    printf 'MANUAL_STOP\\n' > "$ROOT/run/$PROFILE/shutdown-reason"
+    printf 'MANUAL_STOP\n' > "$ROOT/run/$PROFILE/shutdown-reason"
     bash "$ROOT/scripts/service-event.sh" "$PROFILE" MANUAL_STOP "requested_by=$(id -un)"
     sudo systemctl stop "$UNIT"
     sudo systemctl stop "$WATCHDOG_UNIT" 2>/dev/null || true
