@@ -10,5 +10,4 @@ target/
 
 # Environment configuration
 .env
-.env.*
 !.env.*.example
