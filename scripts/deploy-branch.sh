@@ -10,6 +10,8 @@ cd "$ROOT"
 [[ -f ".env.$PROFILE" ]] || { echo "Missing .env.$PROFILE in isolated checkout $ROOT" >&2; exit 1; }
 command -v mvn >/dev/null
 command -v git >/dev/null
+command -v tar >/dev/null
+command -v flock >/dev/null
 command -v curl >/dev/null
 
 UNIT="main-api-$PROFILE.service"
@@ -127,7 +129,8 @@ if [[ "$UNIT_ROOT" != "$ROOT" ]]; then
   exit 1
 fi
 if ! atomic_install "$BUILT_JAR"; then
-  fail_deploy "jar_install_failed"
+  log_event "event=DEPLOY_FAILED reason=jar_install_failed"
+  notify DEPLOY_FAILED "Could not install new JAR; old running service left untouched."
   exit 1
 fi
 echo "Restarting $UNIT"
