@@ -83,6 +83,7 @@ esac
 exit 22
 """)
         write_executable(fake / "python3", "#!/usr/bin/env bash\nexit 0\n")
+        write_executable(fake / "sleep", "#!/usr/bin/env bash\nexit 0\n")
         env = dict(os.environ, PATH=str(fake) + os.pathsep + os.environ["PATH"],
                    TEST_STATE=str(state), TEST_REPO=str(repo))
         result = run(["bash", "scripts/deploy-branch.sh", "dev"], cwd=repo, env=env, check=False)
@@ -91,7 +92,7 @@ exit 22
         logs = "\n".join(p.read_text() for p in (repo / "logs" / "dev" / "deployment").glob("*"))
         success = (actual == expected and
                    ((result.returncode == 0) == (fail_mode == "normal")) and
-                   ((restarts >= 2) if expect_restart else (restarts == 0)) and
+                   ((restarts >= 2) if expect_restart else (restarts == (1 if fail_mode == "normal" else 0))) and
                    (("event=ROLLBACK result=succeeded" in logs) if expect_restart else True))
         print(("[PASS]" if success else "[FAIL]") + " " + name +
               " | jar=" + actual + " | restarts=" + str(restarts) +
