@@ -48,19 +48,11 @@ monitoring:
       port: ${MONITOR_SOCKET_PORT:7104}
 
 
-# Swagger/OpenAPI is disabled by default (including stage and prod).
+# Swagger/OpenAPI endpoints are available in all runtime profiles.
+# Disable explicitly in a restricted deployment with SPRINGDOC_API_DOCS_ENABLED=false
+# and SPRINGDOC_SWAGGER_UI_ENABLED=false.
 springdoc:
   api-docs:
-    enabled: false
+    enabled: ${SPRINGDOC_API_DOCS_ENABLED:true}
   swagger-ui:
-    enabled: false
----
-spring:
-  config:
-    activate:
-      on-profile: local,dev
-springdoc:
-  api-docs:
-    enabled: true
-  swagger-ui:
-    enabled: true
+    enabled: ${SPRINGDOC_SWAGGER_UI_ENABLED:true}
