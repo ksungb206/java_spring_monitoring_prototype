@@ -4,6 +4,98 @@
 
 Java 17 · Spring Boot 3.3.5 · MyBatis · Maven · Ubuntu / WSL(systemd) · Gmail SMTP
 
+## 빠른 시작 (Quick Start)
+
+Ubuntu 또는 WSL2 Ubuntu에서 Java 17 / Spring Boot 3.3.5 기반 LOCAL 서버를 처음 실행하는 절차입니다. 자세한 환경 설정 및 운영 정책은 아래 기존 가이드를 참고하세요.
+
+### 1. 저장소 Clone 및 브랜치 확인
+
+Swagger가 적용된 기능 브랜치를 내려받습니다.
+
+```bash
+git clone -b feat/ksb/local https://github.com/ksungb206/java_spring_monitoring_prototype.git
+cd java_spring_monitoring_prototype
+git branch --show-current
+```
+
+출력 브랜치가 `feat/ksb/local`인지 확인합니다. 기본 `git clone`만 실행하면 기본 브랜치인 `main`이 선택됩니다.
+
+### 2. 필수 프로그램 및 systemd 준비
+
+```bash
+sudo apt update
+sudo apt install -y openjdk-17-jdk maven git curl tar python3 sudo
+```
+
+WSL2에서는 systemd를 활성화해야 `start:local` 명령을 사용할 수 있습니다. 활성화 방법은 아래 **최초 1회: 각 개발자의 WSL 설정** 절을 참고하세요.
+
+### 3. LOCAL 환경 설정
+
+프로젝트 루트에 `.env.local`을 준비합니다. 파일이 없다면 본인의 환경에 맞게 생성해야 합니다. Gmail 장애 알림을 사용할 때는 다음 항목을 설정합니다.
+
+```dotenv
+MAIL_USERNAME=your-sender@gmail.com
+MAIL_PASSWORD=your-google-app-password
+MONITOR_EMAIL_TO=your-recipient@example.com
+MONITORING_EMAIL_ENABLED=true
+```
+
+실제 비밀번호는 GitHub에 커밋하지 마세요. 메일 알림을 사용하지 않는다면 `MONITORING_EMAIL_ENABLED=false`로 설정할 수 있습니다.
+
+### 4. Maven 빌드
+
+```bash
+mvn clean install
+```
+
+출력 마지막에 `BUILD SUCCESS`가 표시되는지 확인합니다.
+
+### 5. LOCAL 서버 시작 및 상태 확인
+
+```bash
+source ./scripts/activate.sh
+start:local
+status:local
+```
+
+`start:local`은 프로젝트의 systemd 기반 시작/배포 스크립트입니다. 최초 실행이나 경로 변경 시 서비스 설치 및 Maven 빌드가 다시 수행될 수 있습니다. 새로운 터미널을 열면 `source ./scripts/activate.sh`를 다시 실행해야 합니다.
+
+### 6. Health Check 및 Swagger 확인
+
+```bash
+curl http://localhost:7001/api/v1/health
+curl http://localhost:7001/v3/api-docs
+```
+
+- LOCAL Swagger UI: http://localhost:7001/swagger-ui/index.html
+- LOCAL OpenAPI JSON: http://localhost:7001/v3/api-docs
+- DEV Swagger UI: http://localhost:7002/swagger-ui/index.html (DEV 서버 배포 및 실행 시)
+
+Swagger는 LOCAL/DEV에서 활성화되고 STAGE/PROD에서는 기본 비활성화됩니다. Swagger 문서에 노출된 API라도 Spring Security 정책에 따라 호출이 제한될 수 있습니다.
+
+### 7. 서버 관리 명령어
+
+```bash
+stop:local
+restart:local
+status:local
+logs:local
+```
+
+### 8. 이미 Clone한 저장소 업데이트
+
+기존 작업 내용이 있다면 `git status`로 확인한 후 최신 브랜치를 받습니다.
+
+```bash
+git status
+git switch feat/ksb/local
+git pull origin feat/ksb/local
+```
+
+Git Pull은 소스 코드만 갱신합니다. 실행 중인 서비스에 반영하려면 최신 코드의 빌드와 재배포가 필요하며, 단순 `systemctl start` 또는 `restart:local`만으로는 기존 JAR가 갱신되지 않을 수 있습니다. 배포 방법은 아래 LOCAL 환경 실행 및 systemd 관리 설명을 참고하세요.
+
+---
+
 ## 1. 프로젝트 목적과 출발점
 
 본 프로젝트는 기존 Node.js NestJS 기반 프로젝트를 Java Spring Boot로 컨버팅한 버전이다. 프레임워크 전환을 출발점으로 MSA 서비스의 연결 장애를 감지하고, 장애 발생 사실을 운영자에게 알리며, 서버별 복구 시나리오를 검증하기 위한 포트폴리오용 프로토타입이다.
