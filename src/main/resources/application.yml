@@ -47,3 +47,20 @@ monitoring:
       host: ${MONITOR_SOCKET_HOST:127.0.0.1}
       port: ${MONITOR_SOCKET_PORT:7104}
 
+
+# Swagger/OpenAPI is disabled by default (including stage and prod).
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+---
+spring:
+  config:
+    activate:
+      on-profile: local,dev
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
