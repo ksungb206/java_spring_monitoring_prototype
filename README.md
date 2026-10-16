@@ -20,6 +20,56 @@ git branch --show-current
 
 출력 브랜치가 `feat/ksb/local`인지 확인합니다. 기본 `git clone`만 실행하면 기본 브랜치인 `main`이 선택됩니다.
 
+### 현재 브랜치 확인 및 사용 방법
+
+이 프로젝트에서는 `main`(기본 브랜치), `dev`(개발 통합·자동 배포), `feat/ksb/local`(LOCAL 기능 개발 및 Swagger 작업)을 구분하여 사용합니다. 브랜치를 변경해도 실행 중인 systemd 서비스가 자동으로 변경되거나 배포되지는 않습니다.
+
+**현재 사용 중인 브랜치 확인**
+
+```bash
+git branch --show-current
+git status -sb
+```
+
+**로컬 브랜치와 원격 브랜치 목록 확인**
+
+```bash
+git branch -a
+```
+
+**기존 저장소에서 기능 브랜치로 전환**
+
+```bash
+git fetch origin
+git switch feat/ksb/local
+```
+
+로컬에 해당 브랜치가 아직 없다면 다음 명령어로 원격 브랜치를 추적하는 로컬 브랜치를 생성합니다.
+
+```bash
+git switch --track origin/feat/ksb/local
+```
+
+브랜치를 전환하기 전에는 `git status`로 미커밋 변경 사항을 확인하고, 필요하면 먼저 커밋하거나 안전하게 보관하세요.
+
+**현재 기능 브랜치 최신 코드 받기**
+
+```bash
+git pull origin feat/ksb/local
+git log -1 --oneline
+```
+
+**수정 사항을 기능 브랜치에 커밋하고 푸시하기**
+
+```bash
+git status
+git add README.md
+git commit -m "README 브랜치 사용 가이드 보완"
+git push origin feat/ksb/local
+```
+
+위 `git add README.md`는 README를 수정했을 때의 예시입니다. 다른 파일을 수정했다면 커밋 대상 파일을 확인한 뒤 선택해서 추가하세요. `dev`로 통합할 때는 팀의 Pull Request·리뷰 절차를 따릅니다. `dev` 브랜치에 푸시하면 설정된 GitHub Actions DEV 자동 배포가 실행될 수 있으므로 주의하세요.
+
 ### 2. 필수 프로그램 및 systemd 준비
 
 ```bash
