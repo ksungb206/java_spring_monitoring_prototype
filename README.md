@@ -163,6 +163,57 @@ Git Pull은 소스 코드만 갱신합니다. 실행 중인 서비스에 반영�
 
 ---
 
+## DEV 배포 안정성 검증 (feat 브랜치 변경 사항)
+
+현재 `feat/ksb/local`에만 배포 스크립트 변경이 적용되어 있습니다. DEV에서 테스트하려면 코드 검토 후 `dev` 브랜치에 병합해야 합니다. **feat 작업 폴더에서 `bash scripts/deploy-branch.sh dev`를 실행하지 마세요.** 이 스크립트는 `dev` 전용 체크아웃 및 systemd 서비스를 요구합니다.
+
+### 배포 구조
+
+- Maven 빌드와 테스트는 별도 임시 폴더에서 수행합니다. 실행 중인 `target/`을 정리하지 않습니다.
+- systemd가 사용하는 실행 파일은 `run/dev/application.jar`입니다. 실제 서비스 설정이 다른 JAR를 가리키면 배포를 **중단**합니다.
+- 빌드 성공 후 기존 JAR를 백업하고, 같은 파일시스템의 임시 파일을 통해 새 JAR를 교체합니다.
+- 재시작 또는 Health Check 실패 시 이전 JAR로 복구하고 재시작합니다. **무중단 배포는 아닙니다.**
+- 동일 환경에서 동시 배포가 실행되지 않도록 `flock` 잠금을 사용합니다.
+
+### DEV 반영 전 사전 점검 (서비스 중단 없음)
+
+DEV 전용 체크아웃에서 아래 명령을 실행합니다. 먼저 `git branch --show-current`가 `dev`인지 확인하세요.
+
+```bash
+bash -n scripts/deploy-branch.sh
+sudo systemctl cat main-api-dev.service
+sudo systemctl show main-api-dev.service -p WorkingDirectory -p ExecStart -p MainPID
+curl -i http://localhost:7002/api/v1/health
+sha256sum run/dev/application.jar
+```
+
+`ExecStart`가 해당 DEV 체크아웃의 `run/dev/application.jar`를 가리켜야 합니다. 다르면 **배포 명령을 실행하지 말고** 기존 systemd 유닛과 실행 JAR를 먼저 안전하게 이전해야 합니다. 기존 DEV가 `target/`을 실행 중인 경우 자동 변경하지 않습니다.
+
+### 검증 시나리오
+
+| 테스트 | 실행 방법 | 합격 기준 |
+| --- | --- | --- |
+| T1 정상 배포 | dev 브랜치 반영 후 전용 체크아웃에서 `bash scripts/deploy-branch.sh dev` | BUILD_SUCCEEDED, DEPLOY_SUCCEEDED, HTTP 200 |
+| T2 컴파일 오류 | 격리 테스트 환경에서 의도적인 Java 문법 오류가 포함된 테스트 커밋을 배포 | BUILD_FAILED, 기존 MainPID와 JAR 체크섬 동일, HTTP 200 |
+| T3 단위 테스트 실패 | 격리 테스트 환경에서 실패하는 JUnit 테스트 커밋을 배포 | BUILD_FAILED, 기존 MainPID와 JAR 체크섬 동일, HTTP 200 |
+| T4 신규 JAR 시작 실패 | DEV와 분리된 테스트 서비스에서 신규 빌드에만 시작 오류 주입 | DEPLOY_FAILED 및 ROLLBACK succeeded, 이전 버전 HTTP 200 |
+| T5 Health 실패 | DEV와 분리된 테스트 서비스에서 신규 버전 Health 실패 주입 | DEPLOY_FAILED 및 ROLLBACK succeeded, 이전 버전 HTTP 200 |
+
+T2~T5는 테스트 커밋을 실제 `dev`에 푸시하면 자동 배포가 실행될 수 있으므로 **현재 정상 DEV에서 곧바로 실험하지 마세요.** 별도 격리 환경과 테스트 브랜치를 준비한 후 실행해야 합니다. 실패 주입용 자동 테스트 도구는 아직 추가하지 않았습니다.
+
+테스트 전후에 아래 명령으로 PID, JAR 체크섬, HTTP 응답을 비교합니다.
+
+```bash
+sudo systemctl show main-api-dev.service -p MainPID
+sha256sum run/dev/application.jar
+curl -i http://localhost:7002/api/v1/health
+ls -lt logs/dev/deployment/
+```
+
+**한계:** 현재 Health Check는 HTTP 성공 여부만 확인합니다. 새 빌드의 Git SHA까지 일치하는지 검증하는 기능은 다음 개선 과제입니다.
+
+---
+
 ## 1. 프로젝트 목적과 출발점
 
 본 프로젝트는 기존 Node.js NestJS 기반 프로젝트를 Java Spring Boot로 컨버팅한 버전이다. 프레임워크 전환을 출발점으로 MSA 서비스의 연결 장애를 감지하고, 장애 발생 사실을 운영자에게 알리며, 서버별 복구 시나리오를 검증하기 위한 포트폴리오용 프로토타입이다.
