@@ -7,3 +7,8 @@ target/
 .DS_Store
 /logs/
 /run/
+
+# Environment configuration
+.env
+.env.*
+!.env.*.example
