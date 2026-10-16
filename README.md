@@ -163,6 +163,57 @@ Git Pull은 소스 코드만 갱신합니다. 실행 중인 서비스에 반영�
 
 ---
 
+## DEV 배포 안정성 검증 (feat 브랜치 변경 사항)
+
+현재 `feat/ksb/local`에만 배포 스크립트 변경이 적용되어 있습니다. DEV에서 테스트하려면 코드 검토 후 `dev` 브랜치에 병합해야 합니다. **feat 작업 폴더에서 `bash scripts/deploy-branch.sh dev`를 실행하지 마세요.** 이 스크립트는 `dev` 전용 체크아웃 및 systemd 서비스를 요구합니다.
+
+### 배포 구조
+
+- Maven 빌드와 테스트는 별도 임시 폴더에서 수행합니다. 실행 중인 `target/`을 정리하지 않습니다.
+- systemd가 사용하는 실행 파일은 `run/dev/application.jar`입니다. 실제 서비스 설정이 다른 JAR를 가리키면 배포를 **중단**합니다.
+- 빌드 성공 후 기존 JAR를 백업하고, 같은 파일시스템의 임시 파일을 통해 새 JAR를 교체합니다.
+- 재시작 또는 Health Check 실패 시 이전 JAR로 복구하고 재시작합니다. **무중단 배포는 아닙니다.**
+- 동일 환경에서 동시 배포가 실행되지 않도록 `flock` 잠금을 사용합니다.
+
+### DEV 반영 전 사전 점검 (서비스 중단 없음)
+
+DEV 전용 체크아웃에서 아래 명령을 실행합니다. 먼저 `git branch --show-current`가 `dev`인지 확인하세요.
+
+```bash
+bash -n scripts/deploy-branch.sh
+sudo systemctl cat main-api-dev.service
+sudo systemctl show main-api-dev.service -p WorkingDirectory -p ExecStart -p MainPID
+curl -i http://localhost:7002/api/v1/health
+sha256sum run/dev/application.jar
+```
+
+`ExecStart`가 해당 DEV 체크아웃의 `run/dev/application.jar`를 가리켜야 합니다. 다르면 **배포 명령을 실행하지 말고** 기존 systemd 유닛과 실행 JAR를 먼저 안전하게 이전해야 합니다. 기존 DEV가 `target/`을 실행 중인 경우 자동 변경하지 않습니다.
+
+### 검증 시나리오
+
+| 테스트 | 실행 방법 | 합격 기준 |
+| --- | --- | --- |
+| T1 정상 배포 | dev 브랜치 반영 후 전용 체크아웃에서 `bash scripts/deploy-branch.sh dev` | BUILD_SUCCEEDED, DEPLOY_SUCCEEDED, HTTP 200 |
+| T2 컴파일 오류 | 격리 테스트 환경에서 의도적인 Java 문법 오류가 포함된 테스트 커밋을 배포 | BUILD_FAILED, 기존 MainPID와 JAR 체크섬 동일, HTTP 200 |
+| T3 단위 테스트 실패 | 격리 테스트 환경에서 실패하는 JUnit 테스트 커밋을 배포 | BUILD_FAILED, 기존 MainPID와 JAR 체크섬 동일, HTTP 200 |
+| T4 신규 JAR 시작 실패 | DEV와 분리된 테스트 서비스에서 신규 빌드에만 시작 오류 주입 | DEPLOY_FAILED 및 ROLLBACK succeeded, 이전 버전 HTTP 200 |
+| T5 Health 실패 | DEV와 분리된 테스트 서비스에서 신규 버전 Health 실패 주입 | DEPLOY_FAILED 및 ROLLBACK succeeded, 이전 버전 HTTP 200 |
+
+T2~T5는 테스트 커밋을 실제 `dev`에 푸시하면 자동 배포가 실행될 수 있으므로 **현재 정상 DEV에서 곧바로 실험하지 마세요.** 별도 격리 환경과 테스트 브랜치를 준비한 후 실행해야 합니다. 실패 주입용 자동 테스트 도구는 아직 추가하지 않았습니다.
+
+테스트 전후에 아래 명령으로 PID, JAR 체크섬, HTTP 응답을 비교합니다.
+
+```bash
+sudo systemctl show main-api-dev.service -p MainPID
+sha256sum run/dev/application.jar
+curl -i http://localhost:7002/api/v1/health
+ls -lt logs/dev/deployment/
+```
+
+**한계:** 현재 Health Check는 HTTP 성공 여부만 확인합니다. 새 빌드의 Git SHA까지 일치하는지 검증하는 기능은 다음 개선 과제입니다.
+
+---
+
 ## 1. 프로젝트 목적과 출발점
 
 본 프로젝트는 기존 Node.js NestJS 기반 프로젝트를 Java Spring Boot로 컨버팅한 버전이다. 프레임워크 전환을 출발점으로 MSA 서비스의 연결 장애를 감지하고, 장애 발생 사실을 운영자에게 알리며, 서버별 복구 시나리오를 검증하기 위한 포트폴리오용 프로토타입이다.
@@ -515,3 +566,68 @@ Runner는 GitHub **Settings → Actions → Runners**에서 온라인 상태 및
 - Runner가 실행하는 저장소 코드는 **해당 WSL 사용자 권한으로 실행**됩니다. 신뢰할 수 있는 코드·기여자에게만 배포 권한을 부여하고 Runner 등록 토큰과 비밀값을 보호하세요.
 
 STAGE/PROD/EC2 확장과 관리자 페이지는 이 DEV 프로토타입의 후속 작업입니다.
+
+
+### 장애 사례: 2026-10-17 DEV 자동 배포 sudo 인증 실패 및 API 검증
+
+**환경:** GitHub Actions Self-hosted Runner (WSL, 사용자 user), DEV 브랜치, main-api-dev.service, scripts/deploy-branch.sh.
+
+**증상:** Git 동기화 후 Deploy DEV to the runner's own WSL 단계에서 실패했습니다.
+
+~~~text
+Already up to date.
+sudo: interactive authentication is required
+Error: Process completed with exit code 1.
+~~~
+
+**원인 조사:** Git 작업 트리에는 추적 파일 변경이 없었고 Fast-forward 가능 여부 검사 종료 코드는 0이었습니다. systemd WorkingDirectory와 ExecStart의 JAR 경로도 정상입니다. 배포 스크립트에서 다음 명령을 실행하고 있었습니다.
+
+~~~bash
+UNIT_EXEC="$(sudo -n systemctl show "$UNIT" -p ExecStart --value)"
+~~~
+
+확인 당시 sudoers의 NOPASSWD 목록에는 systemctl cat, systemctl restart, systemctl show -p WorkingDirectory 명령이 있었으나 ExecStart 조회는 없었습니다. 비대화형 Runner에서는 sudo 인증을 입력할 수 없으므로 이 명령이 최초 실패의 유력한 원인입니다.
+
+**조치:** sudo 없이 ExecStart를 조회할 수 있음을 확인하고 다음과 같이 수정하여 dev 브랜치에 반영했습니다.
+
+~~~bash
+# 변경 전
+UNIT_EXEC="$(sudo -n systemctl show "$UNIT" -p ExecStart --value)"
+# 변경 후
+UNIT_EXEC="$(systemctl show "$UNIT" -p ExecStart --value)"
+~~~
+
+**추가 점검:** 코드 수정 후 첫 배포에서도 같은 sudo 인증 오류가 발생했습니다. sudo -n -k 옵션으로 systemctl cat 및 WorkingDirectory 조회가 비밀번호 없이 실행됨을 확인했고, Runner 실행 계정도 user로 확인했습니다. 동일 커밋의 실패한 Job을 다시 실행했습니다.
+
+~~~bash
+gh run rerun 38978979869 --failed --repo ksungb206/java_spring_monitoring_prototype
+gh run watch 38978979869 --repo ksungb206/java_spring_monitoring_prototype --exit-status
+~~~
+
+최종 결과:
+
+~~~text
+Run Deploy monitoring server (38978979869) has already completed with 'success'
+~~~
+
+**최종 API 응답 확인:** DEV Health API (GET http://127.0.0.1:7002/api/v1/health)의 응답 본문은 다음과 같았습니다.
+
+~~~json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "status": "result_ok_deploy_v2",
+    "timestamp": "2026-10-16T23:03:40.950226225Z"
+  }
+}
+~~~
+
+**최종 결과: GitHub Actions 자동 배포 성공 및 Spring Boot Health API 성공 응답 본문 확인.** 위 code: 200은 JSON 본문의 애플리케이션 코드이며, 별도의 HTTP 상태줄이나 전체 기능 테스트를 검증한 것은 아닙니다.
+
+**미확정 사항:** 코드 수정 직후 첫 실행은 실패했으나 동일 커밋 재실행은 성공했습니다. 그 차이의 정확한 원인은 확인되지 않았으므로 단정하지 않습니다.
+
+**재발 방지:** 읽기 전용 systemctl 조회에는 불필요한 sudo를 사용하지 않습니다. 서비스 재시작처럼 권한이 필요한 작업에만 최소 범위의 NOPASSWD 권한을 적용하고, 배포 초기 단계의 오류 로그를 보강하며, 배포 완료 후 Health API를 확인합니다.
+
+- [최초 실패 실행 #38967367425](https://github.com/ksungb206/java_spring_monitoring_prototype/actions/runs/38967367425)
+- [수정 후 실패 및 재실행 성공 #38978979869](https://github.com/ksungb206/java_spring_monitoring_prototype/actions/runs/38978979869)
