@@ -1,0 +1,403 @@
+[33mcommit e3e24958bf27f7c7c69f846ecf9a03816abfc749[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mfeat/ksb/local[m[33m, [m[1;31morigin/feat/ksb/local[m[33m)[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Mon Oct 12 23:24:32 2026 +0900
+
+    docs: NestJS 전환 프로젝트의 목적과 요구사항, MAIN 감시 설정 및 장애 복구 검증 이력 문서화
+    
+    - README 상단에 프로젝트 목적과 사용자 요구사항 및 기술 평가 추가
+    - 모니터링 서버와 각 MSA 서버의 복구 책임 분리
+    - MAIN TCP 감시 환경변수와 실제 기본 포트 명시
+    - 장애 기록의 로컬 보관 및 중앙 백업 서버 후속 과제 기록
+    - 주요 장애 테스트 결과와 해결 방향 정리
+    - 기존 설치 및 실행, DEV 자동 배포 가이드 보존
+
+[33mcommit 3613edbe506572a17fe89ee7eb3f77058da7d0c9[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Mon Oct 12 23:23:52 2026 +0900
+
+    feat: MAIN 서버 TCP 모니터링 대상을 환경변수 기반으로 추가
+    
+    - MONITOR_MAIN_HOST와 MONITOR_MAIN_PORT 설정 추가
+    - 기존 OAuth/Log/Socket 감시 및 이메일 알림 로직 재사용
+    - MAIN 기본 포트 7191 지정, 환경별 설정값으로 변경 가능
+
+[33mcommit 178cb289d1478b1305aaf1bfd39fd43147f50b2c[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Mon Oct 12 22:37:42 2026 +0900
+
+    feat: 빌드 및 배포 결과에 따른 이메일 자동 발송 기능 연동
+    
+    - Maven 빌드 성공·실패 시 이메일 발송
+    - 빌드 실패 시 기존 서버 유지
+    - 배포 성공·실패 시 이메일 발송
+    - 배포 실패 시 이전 JAR 복원 및 복구 Health Check
+    - 이메일 실패는 로그로 남기되 배포 상태에 영향 없도록 처리
+    - 환경별 배포 이벤트 로그 기록
+
+[33mcommit 778ef8f7fda2162cc109d005c344bf40434bd350[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Mon Oct 12 22:08:26 2026 +0900
+
+    fix: 환경별 헬스체크 PORT 추출 sed 역참조 정상화
+    
+    - 잘못된 이중 백슬래시를 단일 역참조로 수정
+    - PORT=7001 설정에서 7001을 추출하도록 보정
+
+[33mcommit bdce4c749c233c3d1351b8cb4dedbeee395fed79[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Mon Oct 12 22:08:19 2026 +0900
+
+    fix: systemd 배포 헬스체크 포트 파싱 및 로그 개행 오류 수정
+    
+    - 환경별 PORT 값을 추출하는 sed 역참조 이스케이프 오류 수정
+    - 배포 이력 로그의 개행 문자가 정상 출력되도록 수정
+    - 수동 재시작 및 중지 사유 파일의 개행 처리 수정
+    - 기존 빌드·배포·롤백 및 이메일 알림 흐름 유지
+
+[33mcommit 3734e56f7847e1a5bb9c23c6612aebd8ac2ad33b[m[33m ([m[1;31morigin/dev[m[33m, [m[1;32mdev[m[33m)[m
+Author: 김성범 <ksungb26@gmail.com>
+Date:   Mon Oct 12 22:04:37 2026 +0900
+
+    .i
+
+[33mcommit caaeaba5cbc43bb2829cb44adfb9e2f8b4083479[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Mon Oct 12 21:34:26 2026 +0900
+
+    feat: 배포 실패 시 이전 서버 버전 복구 및 배포·이메일 발송 이력 기록
+    
+    - 신규 JAR 적용 전 기존 JAR를 previous.jar로 백업
+    - 신규 서버 시작 또는 헬스 체크 실패 시 이전 JAR 복구 및 재시작 시도
+    - 복구 성공·실패 여부를 배포 로그에 별도 기록
+    - 빌드 성공·실패 및 서버 적용 성공·실패 이벤트를 환경별 로그 파일에 저장
+    - 이메일 발송 성공·실패 결과를 로그에 남기고, 이메일 오류가 배포를 중단하지 않도록 처리
+
+[33mcommit bdf9697602130b7b14020c5986624a69dd448cc0[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Mon Oct 12 21:20:32 2026 +0900
+
+    feat: notify build result before service stop and deployment result after health check
+
+[33mcommit 4f66bca80671e089108d0c999b86a77e318dd7fc[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Mon Oct 12 21:20:18 2026 +0900
+
+    feat: send profile-based build and deployment outcome emails
+
+[33mcommit f0d719c6dfff75d44b4d8dceeff08158af648b9f[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Mon Oct 12 21:17:24 2026 +0900
+
+    fix: isolate Maven build and stop service only after successful build
+
+[33mcommit 985103e045076a247088946e901d817f085e6512[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Sat Oct 10 10:57:31 2026 +0900
+
+    fix: simplify PORT parsing for systemd readiness check
+
+[33mcommit 337a5e6a46357609769075dfb454a67c5bd2774c[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Sat Oct 10 10:57:21 2026 +0900
+
+    fix: wait for HTTP 200 readiness on start and restart for all profiles
+
+[33mcommit 12438691d77ae292c9d76650abd595b365b31e96[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Sat Oct 10 10:52:11 2026 +0900
+
+    fix: stop service without rebuilding JAR
+
+[33mcommit e7059c0b6abf02f7a1acb4757c444631df66aba7[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Sat Oct 10 10:49:20 2026 +0900
+
+    fix: rebuild Spring Boot JAR on start stop and restart
+
+[33mcommit eed715b2b6f833730415822f3ab18a4901ad5179[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Sat Oct 10 10:36:26 2026 +0900
+
+    docs: README에 WSL DEV 서버 초기 설정과 자동 배포 제약 정리
+
+[33mcommit 36af100b6754211c65f986eb330406598d6b8f6c[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Sat Oct 10 10:13:05 2026 +0900
+
+    feat: WSL DEV 무인 배포 Runner 자동 설치 및 복구 구성
+    
+    - DEV Push만 배포하도록 GitHub Actions 범위 제한
+    - 설치자 본인 WSL에서 DEV 배포 checkout 및 서비스 초기화 스크립트 추가
+    - Runner를 systemd 서비스로 등록하고 자동 시작·재시작 구성
+    - 사용자별 로컬 경로 기반 배포 및 헬스체크 검증 가이드 추가
+    - 다중 사용자 동일 라벨은 한 Runner만 선택된다는 한계 명시
+    
+    TODO: 여러 사용자 WSL 전체 자동 배포는 Runner별 fan-out 설계 필요
+    TODO: 관리자 페이지에서 설치/빌드/배포/헬스체크를 체크리스트로 확인
+    
+    검증: 실제 WSL 설치 및 GitHub Actions 실행은 사용자 환경에서 후속 검증 필요
+
+[33mcommit d208287103aae3d49ceb203be7567758b38a2fb3[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Sat Oct 10 09:58:46 2026 +0900
+
+    test: DEV 자동 배포 검증용 헬스체크 상태값 변경
+    
+    - GET /api/v1/health 응답의 data.status를 result_ok_deploy_v2로 변경
+    - HealthTest 기대값을 동일하게 변경
+    - feat/ksb/local에서만 반영하고 dev 병합/푸시는 수동으로 진행
+    - 검증: 로컬 Runner 없이 GitHub Actions 배포 성공 후 실제 DEV API의 변경된 응답 확인
+    
+    TODO: 향후 관리자 페이지에서 CI/CD 설치·빌드·배포·헬스체크 상태를 단계별 체크리스트로 표시
+
+[33mcommit dd310738ded85f16855381a615ed1819e4b0b5f3[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Sat Oct 10 09:54:12 2026 +0900
+
+    docs: 관리자 페이지 CI/CD 단계별 상태 확인 TODO 추가
+    
+    [요구사항]
+    - 향후 관리자 페이지에서 서버별 설치 및 배포 진행 상황을 TODO List처럼 직관적으로 확인한다.
+    - 이번 단계에서는 관리자 UI를 구현하지 않고 후속 개발 계획만 기록한다.
+    
+    [추가 사항]
+    - docs/admin-cicd-todo.md 체크리스트 작성
+    - DEV/STAGE/PROD Runner 연결, Git Clone, Runner 등록, systemd 자동 시작 상태 확인 계획
+    - 빌드/테스트, 배포/재시작, 헬스체크의 단계별 결과 표시 계획
+    - 대기/진행 중/성공/실패/건너뜀 상태 및 오류 로그 확인 계획
+    - 수동 배포, 승인 배포, 예약 배포, 배포 이력 기능을 후속 TODO로 기록
+    
+    [구현 원칙]
+    - 서버 및 GitHub Actions의 실제 상태를 근거로 표시한다.
+    - 비밀 설정과 토큰은 관리자 화면이나 로그에 노출하지 않는다.
+    - 각 TODO 항목은 실제 구현과 검증 완료 후 체크한다.
+    
+    [검증]
+    - 문서만 추가하며 실행 코드와 기존 배포 브랜치는 변경하지 않는다.
+
+[33mcommit 9283be85b355cb10d200993065ab4c17e5622c51[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Sat Oct 10 09:51:33 2026 +0900
+
+    feat: 신규 EC2 서버 초기 설치 및 GitHub Actions Runner 자동 실행 환경 구축
+    
+    [요구사항]
+    - 신규 EC2에서 환경별 저장소 Clone 및 최초 배포 구성을 자동화한다.
+    - dev, stage, prod를 별도 서버 및 별도 Runner로 운영한다.
+    - local 및 feat/*는 Runner 배포 대상에서 제외한다.
+    - Runner를 systemd 서비스로 등록하여 서버 시작 시 자동 실행한다.
+    
+    [구현 사항]
+    - bootstrap-server.sh: 환경 검증, 환경 설정 복사, Git Clone 및 초기 설치 연결
+    - provision-server.sh: 독립 배포 Checkout, 애플리케이션 서비스 및 최소 배포 권한 설정
+    - register-runner-service.sh: 공식 Runner 설치, 환경별 라벨 등록 및 서비스 시작
+    - deploy.yml: 환경별 Runner 라벨 및 배포 동시성 분리
+    - docs/ec2-runner-bootstrap.md: 신규 EC2 설치 및 운영 가이드
+    
+    [검증 및 주의]
+    - 기존 DEV/STAGE/PROD 배포 Checkout과 서비스 관리 스크립트 재사용
+    - 기존 WSL deploy-local Runner는 환경별 Runner로 전환 전 새 배포 작업을 처리할 수 없음
+    - 실제 EC2 신규 설치, 재부팅, 자동 배포 검증은 후속 수행 필요
+
+[33mcommit 7e7cdeb7b76f789d31fcac18c7767defb7a18880[m
+Author: 김성범 <ksungb26@gmail.com>
+Date:   Sat Oct 10 09:20:09 2026 +0900
+
+    feat: CI/CD 자동 배포 검증을 위한 Health API 응답값 변경
+    
+    [요구사항]
+    - 기능 브랜치에서 수정한 API 응답이 DEV 환경에 자동 배포되는지 검증한다.
+    - feat/ksb/local 브랜치의 변경 사항을 dev 브랜치에 병합한 후 DEV 서버(7002)에 반영되는지 확인한다.
+    - 기존 HTTP 상태 코드와 API 응답 구조를 유지한다.
+    
+    [수정 사항]
+    - ApiController.java의 Health API 응답값 변경
+    - data.status 값을 ok에서 result_ok로 변경
+    - HealthTest.java의 테스트 기대값을 result_ok로 변경
+    - timestamp 및 기타 응답 필드는 유지
+    
+    [검증 결과]
+    - git diff --check 통과
+    - mvn clean verify 실행 결과 BUILD SUCCESS
+    - DEV 서버 7002에서 기존 status=ok 응답 확인
+    - 배포 스크립트가 HTTP 요청 성공 여부를 검사하는 것을 확인
+    
+    [추가 검증 예정]
+    - 기능 브랜치 Push 후 DEV 응답 유지 확인
+    - dev 브랜치 병합 및 Push 후 GitHub Actions 자동 배포 확인
+    - DEV 서버 7002에서 status=result_ok 확인
+
+[33mcommit b92faa82522d18bfcb36823c3bb05e174705720d[m
+Author: 김성범 <ksungb26@gmail.com>
+Date:   Sat Oct 10 08:56:54 2026 +0900
+
+    refactor: 헬스체크 테스트의 중복 import 정리
+    
+    [요구사항]
+    - JWT 제거 이후 수정된 헬스체크 테스트 코드를 정리한다.
+    - 불필요한 중복 선언을 제거하여 가독성과 유지보수성을 개선한다.
+    - 기존 API 접근 정책과 테스트 동작을 유지한다.
+    
+    [수정 사항]
+    - SecurityConfig 중복 import 제거
+    - Import 어노테이션 관련 중복 import 제거
+    - 테스트 로직 및 보안 설정은 변경하지 않음
+    
+    [검증 결과]
+    - git diff로 중복 import 두 줄만 삭제된 것을 확인
+    - mvn clean verify 실행
+    - 전체 테스트 4개 통과
+    - Failures: 0, Errors: 0
+    - Spring Boot JAR 패키징 성공
+    - BUILD SUCCESS 확인
+    
+    [변경 파일]
+    - src/test/java/kr/co/mainapi/HealthTest.java
+
+[33mcommit 1577890d7d0f38f56ff57a14592cf700c7c25cac[m
+Author: 김성범 <ksungb26@gmail.com>
+Date:   Sat Oct 10 08:47:01 2026 +0900
+
+    test: JWT 제거 이후 헬스체크 및 API 접근 제한 테스트 오류 수정
+    
+    [요구사항]
+    - JWT 제거 이후에도 기존 API 테스트가 정상 수행되어야 한다.
+    - /api/v1/health는 인증 없이 접근 가능해야 한다.
+    - /api/v1/op-config는 운영 설정 보호를 위해 접근을 차단해야 한다.
+    - GitHub Actions 자동 빌드에서도 테스트가 통과해야 한다.
+    
+    [발생 문제]
+    - Maven 테스트 4개 중 2개 실패
+    - 헬스체크: 예상 HTTP 200, 실제 HTTP 401
+    - 운영 설정 조회: 예상 HTTP 403, 실제 HTTP 401
+    - WebMvcTest 환경에서 실제 SecurityConfig가 적용되지 않음
+    
+    [수정 사항]
+    - HealthTest.java에 SecurityConfig import 추가
+    - @Import(SecurityConfig.class) 적용
+    - 테스트 환경에서 실제 API 접근 정책을 검증하도록 수정
+    
+    [검증 결과]
+    - mvn clean verify 실행
+    - BUILD SUCCESS 확인
+    - 헬스체크 및 운영 설정 접근 제한 테스트 통과
+
+[33mcommit c4043365d390dc48a1d5174d5cc900f282309441[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Sat Oct 10 08:34:11 2026 +0900
+
+    Remove unused JWT token filter
+
+[33mcommit 6a95a0bf1086f5de3d7d7d18a75eafaa34605ac0[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Sat Oct 10 08:34:08 2026 +0900
+
+    Remove JWT dependency and environment settings
+
+[33mcommit 660b2e1df3ddbcca01e9fbdc4d5dd98c70e3d4bc[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Sat Oct 10 08:34:06 2026 +0900
+
+    Remove JWT dependency and environment settings
+
+[33mcommit 0aebe7fdb99058cc11b72ca57a7607de02a258fe[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Sat Oct 10 08:34:04 2026 +0900
+
+    Remove JWT dependency and environment settings
+
+[33mcommit 16bd61780833cc36018e5f34d1eec048d5e2e51c[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Sat Oct 10 08:34:01 2026 +0900
+
+    Remove JWT dependency and environment settings
+
+[33mcommit bbe9e615eb0ae31c01074cbf14e0aa61b0ad1729[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Sat Oct 10 08:33:58 2026 +0900
+
+    Remove JWT dependency and environment settings
+
+[33mcommit df6a3da607f5fd2bb63db21ab84e6cef0601e11f[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Sat Oct 10 08:33:51 2026 +0900
+
+    Remove JWT filter wiring and deny non-health endpoints
+
+[33mcommit 2840ac76e6f20ac4c3405ce190ab36a9114cd4ac[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Sat Oct 10 08:33:49 2026 +0900
+
+    Remove JWT filter wiring and deny non-health endpoints
+
+[33mcommit b3451f8e5fbc553554154242c926665bc95ed900[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Sat Oct 10 07:51:01 2026 +0900
+
+    docs: list deployment checkout setup script
+
+[33mcommit 22904885ed5020c561743460338df7df727e5c19[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Sat Oct 10 07:50:55 2026 +0900
+
+    docs: document isolated deployment checkouts and setup
+
+[33mcommit c54ff830fa5c70b05346a5b5a9c7519a79239579[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Sat Oct 10 07:50:34 2026 +0900
+
+    feat: add isolated environment deployment checkout setup
+
+[33mcommit cdee9c86773935ef6d854393ce6cbe13f9382f84[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Sat Oct 10 07:50:21 2026 +0900
+
+    fix: isolate deployment checkout and restore jar on build failure
+
+[33mcommit a350065df63818f2049918d8a20ceb6b4f0f28e9[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Sat Oct 10 07:50:11 2026 +0900
+
+    ci: validate isolated checkout per deployment environment
+
+[33mcommit dfb1d09b4f79c6c9357ec88f8975c6a5f88f39ae[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Sat Oct 10 07:37:13 2026 +0900
+
+    docs: feat 브랜치에 CI/CD 배포 및 Runner 설정 안내 추가
+
+[33mcommit 7d70d97a8fb68ef35982ac1e1b01d81e9e1af16f[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Sat Oct 10 07:19:12 2026 +0900
+
+    feat: 각 브랜치에 따른 서버 CI/CD 자동화
+
+[33mcommit cec1637c4476c7f2e7583acc321e77874ed167d8[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Sat Oct 10 07:09:13 2026 +0900
+
+    feat: log active profile IP and port when server is ready
+
+[33mcommit 4cfe52d5ddeec739b5280ae529ff1115fc18f3f8[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Sat Oct 10 07:08:37 2026 +0900
+
+    ci: target single WSL runner for dev stage prod
+
+[33mcommit 9e212b9ca223c5a3eeba2a61f558f8d9011d7cf7[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Sat Oct 10 07:07:59 2026 +0900
+
+    ci: prepare branch-based systemd deployment
+
+[33mcommit 2adf3597fdab85f544650dbfe8c88820bdbb7a44[m
+Author: ksungb206 <40843014+ksungb206@users.noreply.github.com>
+Date:   Sat Oct 10 07:07:56 2026 +0900
+
+    ci: prepare branch-based systemd deployment
+
+[33mcommit c116e844c37428df485bca086bc7a7dfe4264fed[m[33m ([m[1;31morigin/stage[m[33m, [m[1;31morigin/prod[m[33m, [m[1;32mstage[m[33m)[m
+Author: 김성범 <ksungb26@gmail.com>
+Date:   Sat Oct 10 06:41:31 2026 +0900
+
+    init - 김성범
