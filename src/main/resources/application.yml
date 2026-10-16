@@ -47,3 +47,12 @@ monitoring:
       host: ${MONITOR_SOCKET_HOST:127.0.0.1}
       port: ${MONITOR_SOCKET_PORT:7104}
 
+
+# Swagger/OpenAPI endpoints are available in all runtime profiles.
+# Disable explicitly in a restricted deployment with SPRINGDOC_API_DOCS_ENABLED=false
+# and SPRINGDOC_SWAGGER_UI_ENABLED=false.
+springdoc:
+  api-docs:
+    enabled: ${SPRINGDOC_API_DOCS_ENABLED:true}
+  swagger-ui:
+    enabled: ${SPRINGDOC_SWAGGER_UI_ENABLED:true}

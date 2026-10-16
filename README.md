@@ -4,6 +4,165 @@
 
 Java 17 · Spring Boot 3.3.5 · MyBatis · Maven · Ubuntu / WSL(systemd) · Gmail SMTP
 
+## 빠른 시작 (Quick Start)
+
+Ubuntu 또는 WSL2 Ubuntu에서 Java 17 / Spring Boot 3.3.5 기반 LOCAL 서버를 처음 실행하는 절차입니다. 자세한 환경 설정 및 운영 정책은 아래 기존 가이드를 참고하세요.
+
+### 1. 저장소 Clone 및 브랜치 확인
+
+Swagger가 적용된 기능 브랜치를 내려받습니다.
+
+```bash
+git clone -b feat/ksb/local https://github.com/ksungb206/java_spring_monitoring_prototype.git
+cd java_spring_monitoring_prototype
+git branch --show-current
+```
+
+출력 브랜치가 `feat/ksb/local`인지 확인합니다. 기본 `git clone`만 실행하면 기본 브랜치인 `main`이 선택됩니다.
+
+### Git 브랜치 운영 정책 및 현재 적용 상태
+
+이 프로젝트에는 `feat/ksb/local`, `dev`, `stage`, `prod`, `main` 총 5개 브랜치가 있습니다. **원래 설계한 브랜치 운영 정책**과 **현재 프로토타입에서 실제 사용하는 단계**를 구분합니다.
+
+| 브랜치 | 목적 | 기본 실행 환경 | 기본 포트 | 현재 사용 상태 |
+| --- | --- | --- | --- | --- |
+| `feat/ksb/local` | 신규 기능 개발 및 개인 테스트 | LOCAL | 7001 | 기능 개발에 사용 |
+| `dev` | 개발 기능 통합 및 테스트 | DEV | 7002 | 통합 검증 및 자동 배포에 사용 |
+| `stage` | 운영 배포 전 최종 테스트 | STAGE | 7003 | 브랜치는 존재하나 배포·검증 단계에 미사용 |
+| `prod` | 실제 운영 배포 및 운영 정상 동작 검증 | PROD | 7004 | 브랜치는 존재하나 배포·검증 단계에 미사용 |
+| `main` | 전체 검증을 마친 최종 안정 코드 보관 | 특정 실행 환경에 종속되지 않음 | 해당 없음 | 현재 DEV까지 반영된 코드를 기준으로 관리 |
+
+**각 브랜치의 역할**
+
+- **`feat/ksb/local`**: 신규 기능 구현, 수정, Swagger 적용 등 LOCAL 환경에서 먼저 작업하고 검증하는 개인 기능 브랜치입니다. 이 브랜치의 Push만으로 DEV 자동 배포가 실행되지는 않습니다.
+- **`dev`**: 기능 브랜치에서 개발한 내용을 통합하고 검증합니다. 현재 GitHub Actions와 self-hosted Runner를 이용한 DEV 자동 배포 대상이며 기본 포트는 `7002`입니다.
+- **`stage`**: 원래 정책에서는 DEV 검증 이후 운영 환경과 유사한 조건에서 최종 테스트하는 단계입니다. 현재는 브랜치만 존재하며 실제 STAGE 배포 및 검증 과정에는 사용하지 않습니다.
+- **`prod`**: 원래 정책에서는 STAGE 테스트를 통과한 코드를 실제 운영 환경에 배포하고 정상 동작을 검증하는 단계입니다. 현재는 브랜치만 존재하며 실제 PROD 배포 및 검증 과정에는 사용하지 않습니다.
+- **`main`**: **원래 정책에서는 PROD까지 모든 단계의 테스트와 정상 동작 검증을 마친 코드를 최종 반영하는 완전 최종 브랜치**입니다. **현재는 STAGE/PROD를 사용하지 않는 프로토타입 단계이므로 DEV까지 검증·반영된 내용을 기준으로 `main`을 관리합니다.** 향후 STAGE/PROD를 실제 사용하게 되면 전체 검증을 완료한 코드만 `main`에 반영하는 정책으로 전환할 예정입니다.
+
+**원래 설계한 브랜치 적용 흐름 (향후 목표)**
+
+```text
+feat/ksb/local → dev → stage → prod → main
+   기능 개발       통합     최종     운영     완전 최종
+                  테스트   테스트   검증     코드 반영
+```
+
+**현재 프로토타입의 적용 흐름**
+
+```text
+feat/ksb/local → dev → main
+   기능 개발       통합     DEV까지 검증·반영된 코드
+                  검증
+```
+
+현재 자동 배포가 구성된 대상은 `dev`입니다. `stage`와 `prod` 자동 배포 및 실제 환경 검증은 아직 구현·검증된 것으로 간주하지 않습니다. 브랜치 간 병합은 별도 작업이며, 브랜치를 변경하거나 Pull했다고 실행 중인 Spring Boot 서비스가 자동으로 갱신되지는 않습니다.
+
+**현재 브랜치 및 작업 상태 확인**
+
+```bash
+git branch --show-current
+git status -sb
+git branch -a
+```
+
+**기능 브랜치 전환 및 최신 코드 받기**
+
+```bash
+git fetch origin
+git switch feat/ksb/local
+git pull origin feat/ksb/local
+git log -1 --oneline
+```
+
+로컬에 기능 브랜치가 없다면 `git switch --track origin/feat/ksb/local`을 사용합니다. 브랜치 전환 전에 `git status`로 미커밋 변경 사항을 확인하세요.
+
+**수정 사항 커밋 및 푸시 예시 (README를 수정한 경우)**
+
+```bash
+git add README.md
+git commit -m "README 브랜치 운영 정책 및 현재 적용 상태 정리"
+git push origin feat/ksb/local
+```
+
+`dev` 브랜치에 Push하면 설정된 GitHub Actions DEV 자동 배포가 실행될 수 있습니다. 기능 개발 및 검증 단계의 병합은 Pull Request와 리뷰를 통해 진행하는 것을 권장합니다.
+
+### 2. 필수 프로그램 및 systemd 준비
+
+```bash
+sudo apt update
+sudo apt install -y openjdk-17-jdk maven git curl tar python3 sudo
+```
+
+WSL2에서는 systemd를 활성화해야 `start:local` 명령을 사용할 수 있습니다. 활성화 방법은 아래 **최초 1회: 각 개발자의 WSL 설정** 절을 참고하세요.
+
+### 3. LOCAL 환경 설정
+
+프로젝트 루트에 `.env.local`을 준비합니다. 파일이 없다면 본인의 환경에 맞게 생성해야 합니다. Gmail 장애 알림을 사용할 때는 다음 항목을 설정합니다.
+
+```dotenv
+MAIL_USERNAME=your-sender@gmail.com
+MAIL_PASSWORD=your-google-app-password
+MONITOR_EMAIL_TO=your-recipient@example.com
+MONITORING_EMAIL_ENABLED=true
+```
+
+실제 비밀번호는 GitHub에 커밋하지 마세요. 메일 알림을 사용하지 않는다면 `MONITORING_EMAIL_ENABLED=false`로 설정할 수 있습니다.
+
+### 4. Maven 빌드
+
+```bash
+mvn clean install
+```
+
+출력 마지막에 `BUILD SUCCESS`가 표시되는지 확인합니다.
+
+### 5. LOCAL 서버 시작 및 상태 확인
+
+```bash
+source ./scripts/activate.sh
+start:local
+status:local
+```
+
+`start:local`은 프로젝트의 systemd 기반 시작/배포 스크립트입니다. 최초 실행이나 경로 변경 시 서비스 설치 및 Maven 빌드가 다시 수행될 수 있습니다. 새로운 터미널을 열면 `source ./scripts/activate.sh`를 다시 실행해야 합니다.
+
+### 6. Health Check 및 Swagger 확인
+
+```bash
+curl http://localhost:7001/api/v1/health
+curl http://localhost:7001/v3/api-docs
+```
+
+- LOCAL Swagger UI: http://localhost:7001/swagger-ui/index.html
+- LOCAL OpenAPI JSON: http://localhost:7001/v3/api-docs
+- DEV Swagger UI: http://localhost:7002/swagger-ui/index.html (DEV 서버 배포 및 실행 시)
+
+Swagger는 LOCAL/DEV/STAGE/PROD에서 기본 활성화됩니다. 외부 공개 환경에서는 환경변수로 비활성화하거나 네트워크 접근을 제한하세요. Swagger 문서에 노출된 API라도 Spring Security 정책에 따라 호출이 제한될 수 있습니다.
+
+### 7. 서버 관리 명령어
+
+```bash
+stop:local
+restart:local
+status:local
+logs:local
+```
+
+### 8. 이미 Clone한 저장소 업데이트
+
+기존 작업 내용이 있다면 `git status`로 확인한 후 최신 브랜치를 받습니다.
+
+```bash
+git status
+git switch feat/ksb/local
+git pull origin feat/ksb/local
+```
+
+Git Pull은 소스 코드만 갱신합니다. 실행 중인 서비스에 반영하려면 최신 코드의 빌드와 재배포가 필요하며, 단순 `systemctl start` 또는 `restart:local`만으로는 기존 JAR가 갱신되지 않을 수 있습니다. 배포 방법은 아래 LOCAL 환경 실행 및 systemd 관리 설명을 참고하세요.
+
+---
+
 ## 1. 프로젝트 목적과 출발점
 
 본 프로젝트는 기존 Node.js NestJS 기반 프로젝트를 Java Spring Boot로 컨버팅한 버전이다. 프레임워크 전환을 출발점으로 MSA 서비스의 연결 장애를 감지하고, 장애 발생 사실을 운영자에게 알리며, 서버별 복구 시나리오를 검증하기 위한 포트폴리오용 프로토타입이다.
@@ -152,6 +311,46 @@ logs:local
 ```
 
 각 명령의 `local`을 `dev`, `stage`, `prod`로 바꾸면 해당 프로필에 적용됩니다. **같은 머신에서 여러 프로필을 동시에 실행하려면 각 포트가 충돌하지 않아야 합니다.**
+
+### 서버 시작 시 sudo 비밀번호 입력 안내
+
+`start:local`, `start:dev`, `start:stage`, `start:prod` 명령을 실행할 때 systemd 서비스 설치·관리 등 관리자 권한이 필요한 작업에서는 다음과 같이 `sudo` 비밀번호를 요청할 수 있습니다.
+
+```text
+[sudo] password for 사용자명:
+```
+
+**여기에 입력할 비밀번호는 현재 명령어를 실행 중인 WSL Ubuntu 사용자 계정의 비밀번호입니다.** Ubuntu에서 `sudo` 권한을 확인하기 위한 것이며 Windows 로그인 비밀번호, GitHub 계정 비밀번호 또는 Gmail 앱 비밀번호가 아닙니다.
+
+- 비밀번호 입력 시 화면에 글자나 `*`가 표시되지 않아도 정상입니다. 입력한 뒤 Enter 키를 누르세요.
+- 사용자 계정에 `sudo` 권한이 없거나 비밀번호가 맞지 않으면 관리자 권한이 필요한 작업이 실패할 수 있습니다.
+- Ubuntu 사용자 비밀번호를 잊어버렸다면 해당 WSL 배포판의 계정 비밀번호를 재설정해야 합니다.
+- 실제 비밀번호를 README, 소스 코드, GitHub 또는 공유 로그에 기록하지 마세요.
+- `.env.local`의 `MAIL_PASSWORD`는 메일 알림에 사용하는 **Gmail 앱 비밀번호**이며, 여기서 입력하는 Ubuntu `sudo` 비밀번호와는 다릅니다.
+
+위 안내는 LOCAL뿐 아니라 DEV/STAGE/PROD 명령어에서 `sudo` 비밀번호를 요청하는 경우에도 동일하게 적용됩니다. 단, 이미 권한이 허용되었거나 `sudo` 인증이 유지 중이면 비밀번호 입력 화면이 나타나지 않을 수 있습니다.
+
+### Swagger 환경별 접근 및 403 대응
+
+Swagger/OpenAPI는 LOCAL(7001), DEV(7002), STAGE(7003), PROD(7004) 프로필에서 동일한 경로로 제공하도록 설정합니다. Spring Security는 `/swagger-ui/**`, `/swagger-ui.html`, `/v3/api-docs/**` 경로를 허용하며, 나머지 API의 기존 접근 제한은 유지합니다.
+
+| 환경 | Swagger UI | OpenAPI JSON |
+| --- | --- | --- |
+| LOCAL | http://localhost:7001/swagger-ui/index.html | http://localhost:7001/v3/api-docs |
+| DEV | http://localhost:7002/swagger-ui/index.html | http://localhost:7002/v3/api-docs |
+| STAGE | http://localhost:7003/swagger-ui/index.html | http://localhost:7003/v3/api-docs |
+| PROD | http://localhost:7004/swagger-ui/index.html | http://localhost:7004/v3/api-docs |
+
+**보안 주의:** STAGE/PROD에도 문서가 노출되므로 외부 공개 환경에서는 네트워크 접근 제어를 적용하거나 `SPRINGDOC_API_DOCS_ENABLED=false`, `SPRINGDOC_SWAGGER_UI_ENABLED=false`로 비활성화하세요. 비활성화 시 Swagger는 제공되지 않습니다.
+
+**중요:** 이 설정은 현재 `feat/ksb/local` 브랜치에만 적용됩니다. `dev`, `stage`, `prod`, `main` 브랜치에도 반영하려면 변경 사항을 해당 브랜치에 병합하고 **새로 빌드·배포**해야 합니다. 기존 DEV 서버의 403은 구버전 Spring Security 설정에서 발생할 수 있으며, 기능 브랜치만 수정해도 기존 서버가 자동으로 바뀌지는 않습니다.
+
+```bash
+curl -i http://localhost:7002/swagger-ui/index.html
+curl -i http://localhost:7002/v3/api-docs
+```
+
+HTTP 403이면 실행 중인 서버의 배포 버전과 Spring Security 설정을 확인하고, 404이면 Swagger 의존성·활성화 설정 및 프로필을 확인하세요.
 
 ### 6.4 메일 설정
 
