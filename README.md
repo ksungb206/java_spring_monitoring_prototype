@@ -138,7 +138,7 @@ curl http://localhost:7001/v3/api-docs
 - LOCAL OpenAPI JSON: http://localhost:7001/v3/api-docs
 - DEV Swagger UI: http://localhost:7002/swagger-ui/index.html (DEV 서버 배포 및 실행 시)
 
-Swagger는 LOCAL/DEV에서 활성화되고 STAGE/PROD에서는 기본 비활성화됩니다. Swagger 문서에 노출된 API라도 Spring Security 정책에 따라 호출이 제한될 수 있습니다.
+Swagger는 LOCAL/DEV/STAGE/PROD에서 기본 활성화됩니다. 외부 공개 환경에서는 환경변수로 비활성화하거나 네트워크 접근을 제한하세요. Swagger 문서에 노출된 API라도 Spring Security 정책에 따라 호출이 제한될 수 있습니다.
 
 ### 7. 서버 관리 명령어
 
@@ -329,6 +329,28 @@ logs:local
 - `.env.local`의 `MAIL_PASSWORD`는 메일 알림에 사용하는 **Gmail 앱 비밀번호**이며, 여기서 입력하는 Ubuntu `sudo` 비밀번호와는 다릅니다.
 
 위 안내는 LOCAL뿐 아니라 DEV/STAGE/PROD 명령어에서 `sudo` 비밀번호를 요청하는 경우에도 동일하게 적용됩니다. 단, 이미 권한이 허용되었거나 `sudo` 인증이 유지 중이면 비밀번호 입력 화면이 나타나지 않을 수 있습니다.
+
+### Swagger 환경별 접근 및 403 대응
+
+Swagger/OpenAPI는 LOCAL(7001), DEV(7002), STAGE(7003), PROD(7004) 프로필에서 동일한 경로로 제공하도록 설정합니다. Spring Security는 `/swagger-ui/**`, `/swagger-ui.html`, `/v3/api-docs/**` 경로를 허용하며, 나머지 API의 기존 접근 제한은 유지합니다.
+
+| 환경 | Swagger UI | OpenAPI JSON |
+| --- | --- | --- |
+| LOCAL | http://localhost:7001/swagger-ui/index.html | http://localhost:7001/v3/api-docs |
+| DEV | http://localhost:7002/swagger-ui/index.html | http://localhost:7002/v3/api-docs |
+| STAGE | http://localhost:7003/swagger-ui/index.html | http://localhost:7003/v3/api-docs |
+| PROD | http://localhost:7004/swagger-ui/index.html | http://localhost:7004/v3/api-docs |
+
+**보안 주의:** STAGE/PROD에도 문서가 노출되므로 외부 공개 환경에서는 네트워크 접근 제어를 적용하거나 `SPRINGDOC_API_DOCS_ENABLED=false`, `SPRINGDOC_SWAGGER_UI_ENABLED=false`로 비활성화하세요. 비활성화 시 Swagger는 제공되지 않습니다.
+
+**중요:** 이 설정은 현재 `feat/ksb/local` 브랜치에만 적용됩니다. `dev`, `stage`, `prod`, `main` 브랜치에도 반영하려면 변경 사항을 해당 브랜치에 병합하고 **새로 빌드·배포**해야 합니다. 기존 DEV 서버의 403은 구버전 Spring Security 설정에서 발생할 수 있으며, 기능 브랜치만 수정해도 기존 서버가 자동으로 바뀌지는 않습니다.
+
+```bash
+curl -i http://localhost:7002/swagger-ui/index.html
+curl -i http://localhost:7002/v3/api-docs
+```
+
+HTTP 403이면 실행 중인 서버의 배포 버전과 Spring Security 설정을 확인하고, 404이면 Swagger 의존성·활성화 설정 및 프로필을 확인하세요.
 
 ### 6.4 메일 설정
 
