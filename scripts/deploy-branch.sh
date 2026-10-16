@@ -90,7 +90,7 @@ if ! sudo -n systemctl cat "$UNIT" >/dev/null; then
   exit 1
 fi
 UNIT_ROOT="$(sudo -n systemctl show "$UNIT" -p WorkingDirectory --value)"
-UNIT_EXEC="$(sudo -n systemctl show "$UNIT" -p ExecStart --value)"
+UNIT_EXEC="$(systemctl show "$UNIT" -p ExecStart --value)"
 if [[ "$UNIT_ROOT" != "$ROOT" || "$UNIT_EXEC" != *"$JAR"* ]]; then
   echo "Unsafe unit configuration: expected $UNIT to run $JAR from $ROOT" >&2
   echo "Inspect: sudo systemctl cat $UNIT" >&2
