@@ -20,55 +20,72 @@ git branch --show-current
 
 출력 브랜치가 `feat/ksb/local`인지 확인합니다. 기본 `git clone`만 실행하면 기본 브랜치인 `main`이 선택됩니다.
 
-### 현재 브랜치 확인 및 사용 방법
+### Git 브랜치 운영 정책 및 현재 적용 상태
 
-이 프로젝트에서는 `main`(기본 브랜치), `dev`(개발 통합·자동 배포), `feat/ksb/local`(LOCAL 기능 개발 및 Swagger 작업)을 구분하여 사용합니다. 브랜치를 변경해도 실행 중인 systemd 서비스가 자동으로 변경되거나 배포되지는 않습니다.
+이 프로젝트에는 `feat/ksb/local`, `dev`, `stage`, `prod`, `main` 총 5개 브랜치가 있습니다. **원래 설계한 브랜치 운영 정책**과 **현재 프로토타입에서 실제 사용하는 단계**를 구분합니다.
 
-**현재 사용 중인 브랜치 확인**
+| 브랜치 | 목적 | 기본 실행 환경 | 기본 포트 | 현재 사용 상태 |
+| --- | --- | --- | --- | --- |
+| `feat/ksb/local` | 신규 기능 개발 및 개인 테스트 | LOCAL | 7001 | 기능 개발에 사용 |
+| `dev` | 개발 기능 통합 및 테스트 | DEV | 7002 | 통합 검증 및 자동 배포에 사용 |
+| `stage` | 운영 배포 전 최종 테스트 | STAGE | 7003 | 브랜치는 존재하나 배포·검증 단계에 미사용 |
+| `prod` | 실제 운영 배포 및 운영 정상 동작 검증 | PROD | 7004 | 브랜치는 존재하나 배포·검증 단계에 미사용 |
+| `main` | 전체 검증을 마친 최종 안정 코드 보관 | 특정 실행 환경에 종속되지 않음 | 해당 없음 | 현재 DEV까지 반영된 코드를 기준으로 관리 |
+
+**각 브랜치의 역할**
+
+- **`feat/ksb/local`**: 신규 기능 구현, 수정, Swagger 적용 등 LOCAL 환경에서 먼저 작업하고 검증하는 개인 기능 브랜치입니다. 이 브랜치의 Push만으로 DEV 자동 배포가 실행되지는 않습니다.
+- **`dev`**: 기능 브랜치에서 개발한 내용을 통합하고 검증합니다. 현재 GitHub Actions와 self-hosted Runner를 이용한 DEV 자동 배포 대상이며 기본 포트는 `7002`입니다.
+- **`stage`**: 원래 정책에서는 DEV 검증 이후 운영 환경과 유사한 조건에서 최종 테스트하는 단계입니다. 현재는 브랜치만 존재하며 실제 STAGE 배포 및 검증 과정에는 사용하지 않습니다.
+- **`prod`**: 원래 정책에서는 STAGE 테스트를 통과한 코드를 실제 운영 환경에 배포하고 정상 동작을 검증하는 단계입니다. 현재는 브랜치만 존재하며 실제 PROD 배포 및 검증 과정에는 사용하지 않습니다.
+- **`main`**: **원래 정책에서는 PROD까지 모든 단계의 테스트와 정상 동작 검증을 마친 코드를 최종 반영하는 완전 최종 브랜치**입니다. **현재는 STAGE/PROD를 사용하지 않는 프로토타입 단계이므로 DEV까지 검증·반영된 내용을 기준으로 `main`을 관리합니다.** 향후 STAGE/PROD를 실제 사용하게 되면 전체 검증을 완료한 코드만 `main`에 반영하는 정책으로 전환할 예정입니다.
+
+**원래 설계한 브랜치 적용 흐름 (향후 목표)**
+
+```text
+feat/ksb/local → dev → stage → prod → main
+   기능 개발       통합     최종     운영     완전 최종
+                  테스트   테스트   검증     코드 반영
+```
+
+**현재 프로토타입의 적용 흐름**
+
+```text
+feat/ksb/local → dev → main
+   기능 개발       통합     DEV까지 검증·반영된 코드
+                  검증
+```
+
+현재 자동 배포가 구성된 대상은 `dev`입니다. `stage`와 `prod` 자동 배포 및 실제 환경 검증은 아직 구현·검증된 것으로 간주하지 않습니다. 브랜치 간 병합은 별도 작업이며, 브랜치를 변경하거나 Pull했다고 실행 중인 Spring Boot 서비스가 자동으로 갱신되지는 않습니다.
+
+**현재 브랜치 및 작업 상태 확인**
 
 ```bash
 git branch --show-current
 git status -sb
-```
-
-**로컬 브랜치와 원격 브랜치 목록 확인**
-
-```bash
 git branch -a
 ```
 
-**기존 저장소에서 기능 브랜치로 전환**
+**기능 브랜치 전환 및 최신 코드 받기**
 
 ```bash
 git fetch origin
 git switch feat/ksb/local
-```
-
-로컬에 해당 브랜치가 아직 없다면 다음 명령어로 원격 브랜치를 추적하는 로컬 브랜치를 생성합니다.
-
-```bash
-git switch --track origin/feat/ksb/local
-```
-
-브랜치를 전환하기 전에는 `git status`로 미커밋 변경 사항을 확인하고, 필요하면 먼저 커밋하거나 안전하게 보관하세요.
-
-**현재 기능 브랜치 최신 코드 받기**
-
-```bash
 git pull origin feat/ksb/local
 git log -1 --oneline
 ```
 
-**수정 사항을 기능 브랜치에 커밋하고 푸시하기**
+로컬에 기능 브랜치가 없다면 `git switch --track origin/feat/ksb/local`을 사용합니다. 브랜치 전환 전에 `git status`로 미커밋 변경 사항을 확인하세요.
+
+**수정 사항 커밋 및 푸시 예시 (README를 수정한 경우)**
 
 ```bash
-git status
 git add README.md
-git commit -m "README 브랜치 사용 가이드 보완"
+git commit -m "README 브랜치 운영 정책 및 현재 적용 상태 정리"
 git push origin feat/ksb/local
 ```
 
-위 `git add README.md`는 README를 수정했을 때의 예시입니다. 다른 파일을 수정했다면 커밋 대상 파일을 확인한 뒤 선택해서 추가하세요. `dev`로 통합할 때는 팀의 Pull Request·리뷰 절차를 따릅니다. `dev` 브랜치에 푸시하면 설정된 GitHub Actions DEV 자동 배포가 실행될 수 있으므로 주의하세요.
+`dev` 브랜치에 Push하면 설정된 GitHub Actions DEV 자동 배포가 실행될 수 있습니다. 기능 개발 및 검증 단계의 병합은 Pull Request와 리뷰를 통해 진행하는 것을 권장합니다.
 
 ### 2. 필수 프로그램 및 systemd 준비
 
